@@ -1,12 +1,14 @@
 from multiprocessing import Queue, Process
 import json
+import time
 
-from flask import Flask
+from flask import Flask, request
 from flask_restful import Api
 
 from axifresco import process_canvas_size_request, \
+                      process_config_request, \
                       process_draw_request, \
-                      axidraw_runner
+                      axidraw_runner,
 
 
 app = Flask(__name__)
@@ -34,10 +36,19 @@ def set_config():
     process_config_request(q, config)
     return "sent"
 
+def app_runner(q: Queue):
+    app.run()
+
 if __name__ == '__main__':
     # Launch the axidraw manager
     q = Queue()
-    axidraw = Process(target=axidraw_runner, args=(q,), daemon=True).start()
 
-    # run the flask App
-    app.run()
+    print('Starting server')
+    app_proc = Process(target=app_runner, args=(q,), daemon=True).start()
+    
+    # wait for server initialisation
+    time.sleep(1.0)
+
+    # run axidraw handler
+    axidraw_runner(q)
+

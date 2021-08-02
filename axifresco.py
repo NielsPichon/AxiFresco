@@ -1,8 +1,6 @@
-import inspect
 import atexit
 import time
-from typing import Dict, NoReturn, List
-from collections.abc import Callable
+from typing import Dict, List, NoReturn
 from dataclasses import dataclass
 from multiprocessing import Queue
 
@@ -60,37 +58,12 @@ class FORMATS:
     A5 = Point(148, 210),
 
 
-
-    @classmethod
-    def do_action(action: Callable, *args, **kwargs) -> bool:
-        """
-        Wrapper for any action to perform on the axidraw. Before performaing the action,
-        user approval will be requested if relevant and connection/disconnection to
-        the axidraw will be performed accordingly.
-        """
-        ask_verification = kwargs.get('ask_verification', False)
-        disconnect_on_end = kwargs.get('disconnect_on_end', False)
-        
-        if ask_verification:
-            input(f'Press any key to proceed with {inspect.stack()[1].__name__}')
-
-        if cls.connect():
-            ret = action(*args, **kwargs)
-
-            if disconnect_on_end:
-                cls.disconnect()
-
-            return ret
-        else:
-            return False
-
-
 class Axifresco:
     """
     The main class to handle communication with the axidraw 
     """
 
-    def __init__(self, config: Dict = None) -> NoReturn:
+    def __init__(self, config: Dict = None) -> None:
         # initialise axidraw API
         self.axidraw = axidraw.AxiDraw()
         self.axidraw.interactive()
@@ -105,11 +78,9 @@ class Axifresco:
         self.set_config(config)
 
         # init axidraw state
-        self.is_connected = False
-        self.position = Point(0, 0)
+        self.is_connected = True
+        self.position = Point(-1, -1)
 
-        # move the pen to the home position
-        self.move_home(ask_verification=True)
 
         # set default fromat to A3
         self.format = FORMATS.A3
@@ -117,7 +88,20 @@ class Axifresco:
         # make sure we disconnect before exiting
         atexit.register(self.close)
 
-    def set_format(self, format: Point) -> NoReturn:
+        # move the pen to the home position
+        if not self.move_home(ask_verification=True):
+            try:
+                self.close()
+            except:
+                pass
+            exit(1)
+
+    def error(self, text: str) -> None:
+        if not isinstance(text, str):
+            text = str(text)
+        print('\033[91m' + text + '\033[0m')
+
+    def set_format(self, format: Point) -> None:
         self.format = format
 
     def set_config(self, config: Dict) -> bool:
@@ -130,29 +114,57 @@ class Axifresco:
                 if key in OPTIONS:
                     exec(f'self.axidraw.options.{key} = {value}')
         except Exception as e:
-            print(e)
+            self.error(e)
             return False
 
         return True
     
+    def do_action(func):
+        """
+        Wrapper for any action to perform on the axidraw. Before performaing the action,
+        user approval will be requested if relevant and connection/disconnection to
+        the axidraw will be performed accordingly.
+        """
+        def action(self, *args, **kwargs) -> bool:
+            ask_verification = kwargs.pop('ask_verification', False)
+            disconnect_on_end = kwargs.pop('disconnect_on_end', False)
+
+            if ask_verification:
+                input(
+                    '\033[92m' + f'Press any key to proceed with {func.__name__}...' \
+                    + '\033[0m'
+                )
+
+            if self.connect():
+                ret = func(self, *args, **kwargs)
+
+                if disconnect_on_end:
+                    self.disconnect()
+
+                return ret
+            else:
+                return False
+
+        return action
+
     def connect(self) -> bool:
         if not self.is_connected:
             try:
-                self.axidraw.connect()
+                ret = self.axidraw.connect()
+                return ret
             except Exception as e:
-                print(e)
+                self.error(e)
                 return False
-        return True
+        else:
+            return True
 
     @do_action
-    def go_home(self) -> bool:
+    def move_home(self) -> bool:
         try:
-            self.move_to(Point(0, 0))
+            return self.move_to(Point(0, 0))
         except Exception as e:
-            print(e)
+            self.error(e)
             return False
-
-        return True
 
     @do_action
     def move_to(self, point: Point) -> bool:
@@ -161,7 +173,7 @@ class Axifresco:
                 self.axidraw.moveto(point.x, point.y)
                 self.position = point
             except Exception as e:
-                print(e)
+                self.error(e)
                 return False
         return True
 
@@ -171,7 +183,7 @@ class Axifresco:
             self.axidraw.moveto(point.x, point.y)
             self.position = point
         except Exception as e:
-            print(e)
+            self.error(e)
             return False
         return True
 
@@ -180,7 +192,7 @@ class Axifresco:
         # quickly go through all points and make sure are within bounds of the canvas
         for point in points:
             if point.x < 0 or point.y < 0 or point.x > self.format.x or point.y > self.format.y:
-                print("The drawing extends outside the paper. Will not draw")
+                self.error("The drawing extends outside the paper. Will not draw")
                 return False
 
         # move to start of shape
@@ -247,6 +259,14 @@ def axidraw_runner(q: Queue) -> NoReturn:
             time.sleep(0.5)
     except KeyboardInterrupt:
         print('Shutting down axidraw before exiting')
-        ax.go_home()
-        ax.close()
+        ax.move_home()
+        try:
+            ax.close()
+        except:
+            pass
         exit(0)
+
+
+
+if __name__ == "__main__":
+    ax = Axifresco()

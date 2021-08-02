@@ -78,7 +78,7 @@ class Axifresco:
         self.set_config(config)
 
         # init axidraw state
-        self.is_connected = True
+        self.is_connected = False
         self.position = Point(-1, -1)
 
 
@@ -224,19 +224,19 @@ class Axifresco:
 def process_canvas_size_request(q: Queue, canvas_size):
     print(canvas_size)
     print('Setting canvas size.')
-    raise NotImplementedError
+    pass
     x = 0
     y = 0
     q.put(Point(x, y))
 
 def process_draw_request(q: Queue, draw_request):
     print('Adding draw request to queue')
-    raise NotImplementedError
+    pass
     q.put()
 
 def process_config_request(q: Queue, config_request):
     print('Applying following settings to axidraw:', config_request)
-    raise NotImplementedError
+    pass
 
 def draw(ax, data):
     print('Drawing next set of requested shapes in queue.')

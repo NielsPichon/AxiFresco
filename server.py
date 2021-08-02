@@ -5,10 +5,7 @@ import time
 from flask import Flask, request
 from flask_restful import Api
 
-from axifresco import process_canvas_size_request, \
-                      process_config_request, \
-                      process_draw_request, \
-                      axidraw_runner,
+from axifresco import process_canvas_size_request, process_config_request, process_draw_request, axidraw_runner
 
 
 app = Flask(__name__)
@@ -20,7 +17,6 @@ def draw():
     draw_data = json.loads(request.data.decode())["input"]
     process_draw_request(q, draw_data)
     return "sent"
-
 
 @app.route('/canvas_size', methods=['POST'])
 def set_canvas_size():

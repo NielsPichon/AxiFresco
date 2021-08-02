@@ -208,10 +208,12 @@ class Axifresco:
 
     @do_action
     def draw_shapes(self, shapes: List[List[Point]]) -> bool:
+        
         for shape in tqdm(shapes):
             if not self.draw_shape(shape):
                 return False
-        return True
+
+        return self.move_home()
 
 
     def close(self):
@@ -221,21 +223,23 @@ class Axifresco:
 
 def process_canvas_size_request(q: Queue, canvas_size):
     print(canvas_size)
+    print('Setting canvas size.')
     raise NotImplementedError
     x = 0
     y = 0
     q.put(Point(x, y))
 
 def process_draw_request(q: Queue, draw_request):
-    print(draw_request)
+    print('Adding draw request to queue')
     raise NotImplementedError
     q.put()
 
 def process_config_request(q: Queue, config_request):
-    print(config_request)
+    print('Applying following settings to axidraw:', config_request)
     raise NotImplementedError
 
 def draw(ax, data):
+    print('Drawing next set of requested shapes in queue.')
     if not ax.draw_shapes(shapes=data, ask_verification=True):
         print('Something went wrong during draw and the axidraw '
             'handler will now exit.')

@@ -27,6 +27,8 @@ OPTIONS=[
     'units' 
 ]
 
+ignored = ['units']
+
 @dataclass
 class Point:
     """
@@ -55,9 +57,9 @@ class Point:
 
 
 class FORMATS:
-    A3 = Point(297, 420),
-    A4 = Point(210, 297),
-    A5 = Point(148, 210),
+    A3 = Point(297, 420)
+    A4 = Point(210, 297)
+    A5 = Point(148, 210)
 
 
 Shape = List[Point]
@@ -78,13 +80,12 @@ class Axifresco:
 
         # Force units to be mm
         config['units'] = 2
-        
+
         self.set_config(config)
 
         # init axidraw state
         self.is_connected = False
         self.position = Point(-1, -1)
-
 
         # set default fromat to A3
         self.format = FORMATS.A3
@@ -236,11 +237,23 @@ class Axifresco:
                 for point in shape:
                     point.y *= self.format.y
                     point.x = self.format.x / 2 + (point.x - 0.5) * \
-                        self.format.y / aspect_ratio            
+                        self.format.y / aspect_ratio          
+
+        return shapes  
 
 
 def json_to_shapes(json_file) -> Tuple[List[Shape], float]:
-    pass
+    # get either the shape list or the single shape as a list of shape
+    shapes = json_file.get('shapes', [json_file])
+
+    buffer = []
+    for shape in shapes:
+        buffer.append([Point(vertex['x'], vertex['y']) for vertex in shape['vertices']])
+    
+    aspect_ratio = shapes[0]['canvas_width'] / shapes[0]['canvas_height']
+
+    return buffer, aspect_ratio
+
 
 def json_to_config(json_file) -> Dict:
     pass
@@ -350,21 +363,23 @@ def args_to_config(args) -> Dict:
     config = {}
 
     for option in OPTIONS:
-        exec(f'config[{option}] = args.{option}')
-    
+        if option not in ignored:
+            opt = getattr(args, option)
+            if opt is not None:
+                config[option] = opt
+    print('Axidraw config:', config)
     return config
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         'Loads a json file describing some Fresco shapes and prints them on an Axidraw')
-    subparsers = parser.add_subparsers(help='sub-command help')
-    file_parser = subparsers.add_parser('file', help='File related options')
+    file_parser = parser.add_argument_group('file options')
     file_parser.add_argument('--filename', type=str, required=True, help='Path to file')
     file_parser.add_argument('--paper-size', type=get_canvas_size, default=FORMATS.A3, nargs='+',
                              help='Paper size. Specify either a3, a4, a5, A3, A4, A5, '
                              'or a custom size in mm, e.g. 209 458 for a paper of 209mm '
                              'wide by 458mm long')
-    axidraw_parser = subparsers.add_parser('file', help='Axidraw options')
+    axidraw_parser = parser.add_argument_group('axidraw options')
     axidraw_parser.add_argument('--speed-pendown', type=int,
                                 help='Maximum XY speed when the pen is down (plotting). (1-100)')
     axidraw_parser.add_argument('--speed-penup', type=int, help='Maximum XY speed when the pen is up. (1-100)')
@@ -398,7 +413,10 @@ if __name__ == "__main__":
             shapes = json.load(f)
 
         # convert to shape and fit to paper
+        print('Processing json file')
         shapes, aspect_ratio = json_to_shapes(shapes)
+
+        print('Expanding shape to fit the paper')
         shapes = ax.fit_to_paper(shapes, aspect_ratio)
 
         # draw
@@ -413,7 +431,7 @@ if __name__ == "__main__":
         print('All done')
     except Exception as e:
         print('An exception occured:', e)
-        print('Closing connection first befor eexiting...')
+        print('Closing connection first before exiting...')
         try:
             ax.close()
         except:

@@ -2,12 +2,20 @@ import argparse
 import atexit
 import time
 import json
+from functools import partial
 from typing import Dict, List, NoReturn, Tuple
 from dataclasses import dataclass
 from multiprocessing import Queue
+from threading import Event, Thread
 
 from tqdm import tqdm
 from pyaxidraw import axidraw
+import colorama
+from colorama import Fore
+from pynput import keyboard
+
+
+colorama.init(autoreset=True)
 
 
 OPTIONS=[
@@ -39,13 +47,23 @@ class Point:
     y: float = 0
 
     def __add__(self, b):
-        self.x += b.x
-        self.y += b.x
+        if isinstance(b, Point):
+            return Point(self.x + b.x, self.y + b.y)
+        else:
+            return Point(self.x + b, self.y + b) 
 
     def __sub__(self, b):
-        self.x -= b.x
-        self.y -= b.x
+        if isinstance(b, Point):
+            return Point(self.x - b.x, self.y - b.y)
+        else:
+            return Point(self.x - b, self.y - b) 
     
+    def __truediv__(self, b):
+        if isinstance(b, Point):
+            return Point(self.x / b.x, self.y / b.y)
+        else:
+            return Point(self.x / b, self.y / b) 
+
     def __iter__(self):
         return [self.x, self.y]
 
@@ -54,6 +72,8 @@ class Point:
             return self.x == o.x and self.y == o.y
         else:
             raise Exception(f"Cannot compare {type(o)} and {Point}")
+    
+        
 
 
 class FORMATS:
@@ -64,15 +84,19 @@ class FORMATS:
 
 Shape = List[Point]
 
+
 class Axifresco:
     """
     The main class to handle communication with the axidraw 
     """
 
-    def __init__(self, config: Dict = None) -> None:
+    def __init__(self, config: Dict = None, reset=False) -> None:
         # initialise axidraw API
         self.axidraw = axidraw.AxiDraw()
         self.axidraw.interactive()
+
+        # init pause toggle
+        self.pause = Event()
 
         # set configuration
         if config is None:
@@ -85,26 +109,23 @@ class Axifresco:
 
         # init axidraw state
         self.is_connected = False
-        self.position = Point(-1, -1)
+        self.position = Point(0, 0)
 
         # set default fromat to A3
         self.format = FORMATS.A3
 
-        # make sure we disconnect before exiting
-        atexit.register(self.close)
+        if not reset:
+            # make sure we disconnect before exiting
+            atexit.register(self.close)
 
-        # move the pen to the home position
-        if not self.move_home(ask_verification=True):
-            try:
-                self.close()
-            except:
-                pass
-            exit(1)
+            print(Fore.GREEN + 'Please move the axidraw to the home position '
+                'and press a key to continue...')
+            input()
 
     def error(self, text: str) -> None:
         if not isinstance(text, str):
             text = str(text)
-        print('\033[91m' + text + '\033[0m')
+        print(Fore.RED + text)
 
     def set_format(self, format: Point) -> None:
         self.format = format
@@ -118,6 +139,7 @@ class Axifresco:
             for key, value in config.items():
                 if key in OPTIONS:
                     exec(f'self.axidraw.options.{key} = {value}')
+            self.axidraw.update()
         except Exception as e:
             self.error(e)
             return False
@@ -133,15 +155,39 @@ class Axifresco:
         def action(self, *args, **kwargs) -> bool:
             ask_verification = kwargs.pop('ask_verification', False)
             disconnect_on_end = kwargs.pop('disconnect_on_end', False)
+            allow_pause = kwargs.pop('allow_pause', False)
 
             if ask_verification:
-                input(
-                    '\033[92m' + f'Press any key to proceed with {func.__name__}...' \
-                    + '\033[0m'
-                )
+                print(Fore.GREEN + f'Press any key to proceed with {func.__name__}...')
+                input()
 
             if self.connect():
+                if allow_pause:
+                    # create a thread which listens for key presses and pauses the
+                    # draw process accordingly
+                    # is_done = Event()
+                    # key_thread = Thread(target=keypoll, args=(self.pause, is_done))
+                    def on_press(key, pause_event):
+                        if key == keyboard.Key.space:
+                            if pause_event.is_set():
+                                print('Resuming draw.')
+                                pause_event.clear()
+                            else:
+                                pause_event.set()
+                                print('Pause... Press [space] to resume.')
+
+                    key_thread = keyboard.Listener(
+                        on_press=partial(on_press, pause_event=self.pause))
+
+                    print('Pause the drawing at any point by pressing [SPACEBAR]')
+                    key_thread.start()
+
                 ret = func(self, *args, **kwargs)
+
+                if allow_pause:
+                    # is_done.set()
+                    key_thread.stop()
+                    key_thread.join()
 
                 if disconnect_on_end:
                     self.disconnect()
@@ -156,6 +202,10 @@ class Axifresco:
         if not self.is_connected:
             try:
                 ret = self.axidraw.connect()
+                if ret:
+                    self.is_connected = True
+                    position = self.axidraw.current_pos()
+                    self.position = Point(*position)
                 return ret
             except Exception as e:
                 self.error(e)
@@ -172,10 +222,20 @@ class Axifresco:
             return False
 
     @do_action
+    def pen_up(self) -> bool:
+        try:
+            self.axidraw.penup()
+        except Exception as e:
+            self.error(e)
+            return False
+        return True
+
+    @do_action
     def move_to(self, point: Point) -> bool:
         if self.position != point:
             try:
-                self.axidraw.moveto(point.x, point.y)
+                self.wait_for_resume()
+                self.axidraw.moveto(point.y, point.x)
                 self.position = point
             except Exception as e:
                 self.error(e)
@@ -185,12 +245,19 @@ class Axifresco:
     @do_action
     def line_to(self, point: Point) -> bool:
         try:
-            self.axidraw.moveto(point.x, point.y)
+            self.wait_for_resume()
+            self.axidraw.lineto(point.y, point.x)
             self.position = point
+            if self.pause.is_set():
+                self.pen_up()
         except Exception as e:
             self.error(e)
             return False
         return True
+
+    def wait_for_resume(self) -> None:
+        while self.pause.is_set():
+            time.sleep(0.1)
 
     @do_action
     def draw_shape(self, points: Shape) -> bool:
@@ -201,27 +268,41 @@ class Axifresco:
                 return False
 
         # move to start of shape
-        if not self.moveto(points[0]):
+        if not self.move_to(points[0]):
             return False
 
         # draw line from point to point in shape
         for point in points[1:]:
-            if not self.draw_line(self.position, point):
+            # if pause is set, wait for resume
+            if not self.line_to(point):
                 return False
 
         return True
 
     @do_action
     def draw_shapes(self, shapes: List[Shape]) -> bool:
-        
         for shape in tqdm(shapes):
             if not self.draw_shape(shape):
                 return False
 
         return self.move_home()
 
+    @do_action
+    def stop_motors(self) -> bool:
+        self.axidraw.plot_setup()
+        self.axidraw.options.mode = "align"
+        self.axidraw.plot_run()
 
     def close(self):
+        try:
+            self.move_home()
+        except Exception as e:
+            self.error(f'{e} -> Failed to return home')
+
+        time.sleep(0.2)
+
+        self.stop_motors()
+
         if self.is_connected:
             self.axidraw.disconnect()
 
@@ -253,7 +334,6 @@ def json_to_shapes(json_file) -> Tuple[List[Shape], float]:
     aspect_ratio = shapes[0]['canvas_width'] / shapes[0]['canvas_height']
 
     return buffer, aspect_ratio
-
 
 def json_to_config(json_file) -> Dict:
     pass
@@ -355,7 +435,6 @@ def get_canvas_size(size):
         }
         return sizes[size]
 
-
 def args_to_config(args) -> Dict:
     """
     Converts arguments from an Argparser into a usable config
@@ -369,6 +448,37 @@ def args_to_config(args) -> Dict:
                 config[option] = opt
     print('Axidraw config:', config)
     return config
+
+def draw_from_json(args: argparse.Namespace, ax: Axifresco) -> None:
+    # load file
+    print('Loading file')
+    with open(args.filename, 'r') as f:
+        shapes = json.load(f)
+
+    # convert to shape and fit to paper
+    print('Processing json file')
+    shapes, aspect_ratio = json_to_shapes(shapes)
+
+    print('Expanding shape to fit the paper')
+    shapes = ax.fit_to_paper(shapes, aspect_ratio)
+
+    # draw
+    print('Drawing...')
+    ax.draw_shapes(shapes, ask_verification=True, allow_pause=True)
+
+def test(ax: Axifresco) -> None:
+    """
+    Move the pen to the center of the canvas and then back to home
+    """
+    center = ax.format / 2
+
+    try:
+        ax.move_to(center, ask_verification=True)
+        time.sleep(0.5)
+        ax.move_home()
+    except Exception as e:
+        print(e)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -398,6 +508,9 @@ if __name__ == "__main__":
     axidraw_parser.add_argument('--port', help='Specify a USB port or AxiDraw to use.')
     axidraw_parser.add_argument('--port-config', type=int,
                                 help='Override how the USB ports are located. (0-2)')
+    axidraw_parser.add_argument('--test', action='store_true', help='Test which will move the pen to '
+                                'the center of the canvas and then back home')
+    axidraw_parser.add_argument('--reset', action='store_true', help='Simply lifts the penup and switches off the motors')
 
     args = parser.parse_args()
     config = args_to_config(args)
@@ -405,23 +518,15 @@ if __name__ == "__main__":
     # init axidraw
     print('Initialisizing Axidraw...')
     try:
-        ax = Axifresco(config=config)
-
-        # load file
-        print('Loading file')
-        with open(args.filename, 'r') as f:
-            shapes = json.load(f)
-
-        # convert to shape and fit to paper
-        print('Processing json file')
-        shapes, aspect_ratio = json_to_shapes(shapes)
-
-        print('Expanding shape to fit the paper')
-        shapes = ax.fit_to_paper(shapes, aspect_ratio)
-
-        # draw
-        print('Drawing...')
-        ax.draw_shapes(shapes)
+        ax = Axifresco(config=config, reset=args.reset)
+        
+        if args.reset:
+            ax.stop_motors()
+            ax.axidraw.disconnect()
+        elif args.test:
+            test(ax)
+        else:
+            draw_from_json(args, ax)
 
         try:
             ax.close()

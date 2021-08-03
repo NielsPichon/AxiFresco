@@ -7,5 +7,12 @@ First install the axidraw cli
 
 Install requirements with `pip install -r requirements.txt`
 
-## Run
+## Run the server
 `python server.py` 
+
+
+## Run from file
+`python axifresco.py --filename <file_to_draw.json> [--options]`
+
+To see options:
+`python axifresco -h` 

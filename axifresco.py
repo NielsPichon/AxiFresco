@@ -156,6 +156,7 @@ class Axifresco:
             ask_verification = kwargs.pop('ask_verification', False)
             disconnect_on_end = kwargs.pop('disconnect_on_end', False)
             allow_pause = kwargs.pop('allow_pause', False)
+            go_home = kwargs.pop('go_home', False)
 
             if ask_verification:
                 print(Fore.GREEN + f'Press any key to proceed with {func.__name__}...')
@@ -189,8 +190,11 @@ class Axifresco:
                     key_thread.stop()
                     key_thread.join()
 
+                if go_home:
+                    ret = ret or self.move_home()
+
                 if disconnect_on_end:
-                    self.disconnect()
+                    self.close()
 
                 return ret
             else:
@@ -293,14 +297,7 @@ class Axifresco:
         self.axidraw.options.mode = "align"
         self.axidraw.plot_run()
 
-    def close(self):
-        try:
-            self.move_home()
-        except Exception as e:
-            self.error(f'{e} -> Failed to return home')
-
-        time.sleep(0.2)
-
+    def close(self) -> None:
         self.stop_motors()
 
         if self.is_connected:
@@ -464,7 +461,7 @@ def draw_from_json(args: argparse.Namespace, ax: Axifresco) -> None:
 
     # draw
     print('Drawing...')
-    ax.draw_shapes(shapes, ask_verification=True, allow_pause=True)
+    ax.draw_shapes(shapes, ask_verification=True, allow_pause=True, go_home=True)
 
 def test(ax: Axifresco) -> None:
     """

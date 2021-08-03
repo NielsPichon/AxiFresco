@@ -1,6 +1,8 @@
+import argparse
 import atexit
 import time
-from typing import Dict, List, NoReturn
+import json
+from typing import Dict, List, NoReturn, Tuple
 from dataclasses import dataclass
 from multiprocessing import Queue
 
@@ -57,6 +59,8 @@ class FORMATS:
     A4 = Point(210, 297),
     A5 = Point(148, 210),
 
+
+Shape = List[Point]
 
 class Axifresco:
     """
@@ -188,7 +192,7 @@ class Axifresco:
         return True
 
     @do_action
-    def draw_shape(self, points: List[Point]) -> bool:
+    def draw_shape(self, points: Shape) -> bool:
         # quickly go through all points and make sure are within bounds of the canvas
         for point in points:
             if point.x < 0 or point.y < 0 or point.x > self.format.x or point.y > self.format.y:
@@ -207,7 +211,7 @@ class Axifresco:
         return True
 
     @do_action
-    def draw_shapes(self, shapes: List[List[Point]]) -> bool:
+    def draw_shapes(self, shapes: List[Shape]) -> bool:
         
         for shape in tqdm(shapes):
             if not self.draw_shape(shape):
@@ -220,25 +224,58 @@ class Axifresco:
         if self.is_connected:
             self.axidraw.disconnect()
 
+    def fit_to_paper(self, shapes: List[Shape], aspect_ratio: float):
+        if aspect_ratio > 1:
+            for shape in shapes:
+                for point in shape:
+                    point.x *= self.format.x
+                    point.y = self.format.y / 2 + (point.y - 0.5) * \
+                        self.format.x / aspect_ratio
+        else:
+            for shape in shapes:
+                for point in shape:
+                    point.y *= self.format.y
+                    point.x = self.format.x / 2 + (point.x - 0.5) * \
+                        self.format.y / aspect_ratio            
+
+
+def json_to_shapes(json_file) -> Tuple[List[Shape], float]:
+    pass
+
+def json_to_config(json_file) -> Dict:
+    pass
+
+def json_to_canvas_size(json_to_file) -> Point:
+    pass
 
 def process_canvas_size_request(q: Queue, canvas_size):
-    print(canvas_size)
+    """
+    Converts the results of a POST request into a usable config dict and adds it to the server queue
+    """
     print('Setting canvas size.')
-    pass
-    x = 0
-    y = 0
-    q.put(Point(x, y))
+    point = json_to_canvas_size(canvas_size)
+    q.put(point)
 
 def process_draw_request(q: Queue, draw_request):
+    """
+    Converts the results of a POST request into a usable shapes and adds it to the server queue
+    """
     print('Adding draw request to queue')
-    pass
-    q.put()
+    shapes = json_to_shapes(draw_request)
+    q.put(shapes)
 
 def process_config_request(q: Queue, config_request):
+    """
+    Converts the results of a POST request into a usable config dict and adds it to the server queue
+    """
     print('Applying following settings to axidraw:', config_request)
-    pass
+    json_to_config(config_request)
+    q.put(config_request)
 
-def draw(ax, data):
+def draw_request(ax, data):
+    """
+    Handles drawing the specified shapes. Designed for use with the server approach
+    """
     print('Drawing next set of requested shapes in queue.')
     if not ax.draw_shapes(shapes=data, ask_verification=True):
         print('Something went wrong during draw and the axidraw '
@@ -247,14 +284,17 @@ def draw(ax, data):
         exit(1)
 
 def axidraw_runner(q: Queue) -> NoReturn:
+    """
+    Process runner for the axidraw server
+    """
     print("Initializing Axidraw handler")
     ax = Axifresco()
 
     try:
         while 1:
             data = q.get()
-            if isinstance(data, List[List[Point]]):
-                draw(ax, data)
+            if isinstance(data, List[Shape]):
+                draw_request(ax, data)
             elif isinstance(data, Point):
                 ax.set_format(data)
             elif isinstance(data, Dict):
@@ -270,7 +310,111 @@ def axidraw_runner(q: Queue) -> NoReturn:
             pass
         exit(0)
 
+def get_model(model_name: str) -> int:
+    """
+    Convert argparse arguments into an actual usable model option
+    """
+    models = {
+        'V3': 1,
+        'SE/A3': 2,
+        'XLX': 3,
+        'MiniKit': 4,
+    }
+    return models[model_name]
 
+def get_canvas_size(size):
+    """
+    Convert argparse arguments into an actual usable format
+    """
+    if type(size, List[str]):
+        if len(size) != 2:
+            raise Exception(
+                'If specifying a custom paper size, specify it as [width] [length]')
+        return Point(size[0], size[1])
+    else:
+        sizes = {
+            'a3': FORMATS.A3,
+            'a4': FORMATS.A4,
+            'a5': FORMATS.A5,
+            'A3': FORMATS.A3,
+            'A4': FORMATS.A4,
+            'A5': FORMATS.A5,
+        }
+        return sizes[size]
+
+
+def args_to_config(args) -> Dict:
+    """
+    Converts arguments from an Argparser into a usable config
+    """
+    config = {}
+
+    for option in OPTIONS:
+        exec(f'config[{option}] = args.{option}')
+    
+    return config
 
 if __name__ == "__main__":
-    ax = Axifresco()
+    parser = argparse.ArgumentParser(
+        'Loads a json file describing some Fresco shapes and prints them on an Axidraw')
+    subparsers = parser.add_subparsers(help='sub-command help')
+    file_parser = subparsers.add_parser('file', help='File related options')
+    file_parser.add_argument('--filename', type=str, required=True, help='Path to file')
+    file_parser.add_argument('--paper-size', type=get_canvas_size, default=FORMATS.A3, nargs='+',
+                             help='Paper size. Specify either a3, a4, a5, A3, A4, A5, '
+                             'or a custom size in mm, e.g. 209 458 for a paper of 209mm '
+                             'wide by 458mm long')
+    axidraw_parser = subparsers.add_parser('file', help='Axidraw options')
+    axidraw_parser.add_argument('--speed-pendown', type=int,
+                                help='Maximum XY speed when the pen is down (plotting). (1-100)')
+    axidraw_parser.add_argument('--speed-penup', type=int, help='Maximum XY speed when the pen is up. (1-100)')
+    axidraw_parser.add_argument('--accel', type=int, help='Relative acceleration/deceleration speed. (1-100)')
+    axidraw_parser.add_argument('--pen-pos-down', type=int,
+                                help='Pen height when the pen is down (plotting). (0-100)')
+    axidraw_parser.add_argument('--pen-pos-up', help='Pen height when the pen is up. (0-100)')
+    axidraw_parser.add_argument('--pen-rate-lower', help='Speed of lowering the pen-lift motor. (1-100)')
+    axidraw_parser.add_argument('--pen-rate-raise', help='Speed of raising the pen-lift motor. (1-100)')
+    axidraw_parser.add_argument('--pen-delay-down', help='Added delay after lowering pen. (ms)')
+    axidraw_parser.add_argument('--pen-delay-up', help='Added delay after raising pen. (ms)')
+    axidraw_parser.add_argument('--const-speed', action='store_true',
+                                help='Use constant speed when pen is down.')
+    axidraw_parser.add_argument('--model', type=get_model, default=2, choices=['V3', 'SE/A3', 'XLX', 'MiniKit'],
+                                help='Select model of AxiDraw hardware.')
+    axidraw_parser.add_argument('--port', help='Specify a USB port or AxiDraw to use.')
+    axidraw_parser.add_argument('--port-config', type=int,
+                                help='Override how the USB ports are located. (0-2)')
+
+    args = parser.parse_args()
+    config = args_to_config(args)
+
+    # init axidraw
+    print('Initialisizing Axidraw...')
+    try:
+        ax = Axifresco(config=config)
+
+        # load file
+        print('Loading file')
+        with open(args.filename, 'r') as f:
+            shapes = json.load(f)
+
+        # convert to shape and fit to paper
+        shapes, aspect_ratio = json_to_shapes(shapes)
+        shapes = ax.fit_to_paper(shapes, aspect_ratio)
+
+        # draw
+        print('Drawing...')
+        ax.draw_shapes(shapes)
+
+        try:
+            ax.close()
+        except:
+            print('Failed to close connection properly.')
+
+        print('All done')
+    except Exception as e:
+        print('An exception occured:', e)
+        print('Closing connection first befor eexiting...')
+        try:
+            ax.close()
+        except:
+            print('Failed to close connection properly.')

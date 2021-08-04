@@ -72,8 +72,6 @@ class Point:
             return self.x == o.x and self.y == o.y
         else:
             raise Exception(f"Cannot compare {type(o)} and {Point}")
-    
-        
 
 
 class FORMATS:
@@ -87,6 +85,70 @@ class Shape:
     vertices: List[Point]
     isPolygonal: bool
 
+    def catmull_rom(self, p0: Point, p1: Point, p2: Point, p3: Point) -> List[float]:
+        """
+        Computes the 3rd order polynomial coefficients describing a
+        Catmull Rom spline with alpha=0.5 passing through
+        the 4 specified points"""
+        a = 0.5 * (-p0 + 3 * p1 - 3 * p2 + p3)
+        b = 0.5 * (2 * p0 - 5 * p1 + 4 * p2 - p3)
+        c = 0.5 * (-p0 + p2)
+        d = 0.5 * (2 * p1)
+        return a, b, c, d
+
+    def get_segment(self, idx: int) -> List[Point]:
+        """
+        Returns a list of points describing the edge
+        starting at the specified point.
+        * If the shape is polygonal, this will return a list
+        containing the point and the next one.
+        * If the shape is made of spline, this will return an
+        array of points along the Catmull-Rom spline. 
+        """
+        # if starting at last point, of the spline or further,
+        # don't return anything
+        if idx >= len(self.vertices) - 1:
+            return []
+
+        # else if polygonal, simply return the point at the
+        # specified index and the next one
+        if self.isPolygonal:
+            return [self.vertices[idx], self.vertices[idx + 1]]
+        # else if made of splines, retrieve control points of the spline,
+        # that is the point, the one before and the 2 after.
+        # If close to the end of the shape, the first and last control points will
+        # either be clamped to the shape end, or loop along the shape if the shape
+        # is closed
+        else:
+            if idx == 0:
+                if self.vertices[0] == self.vertices[-1]:
+                    p0 = self.vertices[-2]
+                else:
+                    p0 = self.vertices[0]
+            else:
+                p0 = self.vertices[idx - 1]
+            
+            p1 = self.vertices[idx]
+            p2 = self.vertices[idx + 1]
+
+            if idx == len(self.vertices) - 2:
+                if self.vertices[0] == self.vertices[-1]:
+                    p3 = self.vertices[1]
+                else:
+                    p3 = self.vertices[-1]
+            else:
+                p3 = self.vertices[idx + 2]
+
+            # compute spline coefficients
+            a, b, c, d = self.catmull_rom(p0, p1, p2, p3)
+            # create 100 gradutations along the spline
+            pts = [self.vertices[idx]]
+            for t in list(range(100))[1:-1]:
+                t = t / 100
+                pts.append(d + t * (c + t * (b + t * a)))
+            pts.append(self.vertices[idx + 1])
+
+            return pts
 
 class Axifresco:
     """
@@ -268,22 +330,24 @@ class Axifresco:
 
     @do_action
     def draw_shape(self, shape: Shape) -> bool:
-        points = shape.vertices
         # quickly go through all points and make sure are within bounds of the canvas
-        for point in points:
+        for point in shape.vertices:
             if point.x < 0 or point.y < 0 or point.x > self.format.x or point.y > self.format.y:
                 self.error("The drawing extends outside the paper. Will not draw")
                 return False
 
         # move to start of shape
-        if not self.move_to(points[0]):
+        if not self.move_to(shape.vertices[0]):
             return False
 
         # draw line from point to point in shape
-        for point in points[1:]:
-            # if pause is set, wait for resume
-            if not self.line_to(point):
-                return False
+        for idx in range(len(shape.vertices) - 2):
+            # get all points on the edge from current point to the next one
+            points = shape.get_segment(idx + 1)
+            # draw line from point to point, starting from the next one on the edge
+            for point in points[1:]:
+                if not self.line_to(point):
+                    return False
 
         return True
 

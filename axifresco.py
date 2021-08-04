@@ -82,7 +82,10 @@ class FORMATS:
     A5 = Point(148, 210)
 
 
-Shape = List[Point]
+@dataclass
+class Shape:
+    vertices: List[Point]
+    isPolygonal: bool
 
 
 class Axifresco:
@@ -264,7 +267,8 @@ class Axifresco:
             time.sleep(0.1)
 
     @do_action
-    def draw_shape(self, points: Shape) -> bool:
+    def draw_shape(self, shape: Shape) -> bool:
+        points = shape.vertices
         # quickly go through all points and make sure are within bounds of the canvas
         for point in points:
             if point.x < 0 or point.y < 0 or point.x > self.format.x or point.y > self.format.y:
@@ -306,13 +310,13 @@ class Axifresco:
     def fit_to_paper(self, shapes: List[Shape], aspect_ratio: float):
         if aspect_ratio > 1:
             for shape in shapes:
-                for point in shape:
+                for point in shape.vertices:
                     point.x *= self.format.x
                     point.y = self.format.y / 2 + (point.y - 0.5) * \
                         self.format.x / aspect_ratio
         else:
             for shape in shapes:
-                for point in shape:
+                for point in shape.vertices:
                     point.y *= self.format.y
                     point.x = self.format.x / 2 + (point.x - 0.5) * \
                         self.format.y / aspect_ratio          
@@ -326,7 +330,11 @@ def json_to_shapes(json_file) -> Tuple[List[Shape], float]:
 
     buffer = []
     for shape in shapes:
-        buffer.append([Point(vertex['x'], vertex['y']) for vertex in shape['vertices']])
+        new_shape = Shape(
+            vertices=[Point(vertex['x'], vertex['y']) for vertex in shape['vertices']],
+            isPolygonal=shape['isPolygonal']
+        )
+        buffer.append(new_shape)
     
     aspect_ratio = shapes[0]['canvas_width'] / shapes[0]['canvas_height']
 

@@ -1,5 +1,6 @@
 import argparse
 import atexit
+from os import close, name
 import time
 import json
 from functools import partial
@@ -72,6 +73,10 @@ class Point:
             return self.x == o.x and self.y == o.y
         else:
             raise Exception(f"Cannot compare {type(o)} and {Point}")
+
+    def distSq(self, point) -> float:
+        direction = point - self
+        return direction.x ** 2 + direction.y ** 2
 
 
 class FORMATS:
@@ -387,6 +392,38 @@ class Axifresco:
 
         return shapes  
 
+def distSq_to_shape(shape: Shape, point: Point) -> float:
+    """
+    Returns the square of the distance to a shape's ends from a given point
+    """
+    return min(point.distSq(shape.vertices[0]), point.distSq(shape.vertices[1]))
+
+def optimise_simple(shapes: List[Shape]) -> List[Shape]:
+    """
+    Simple "sort" of list of shape. Essentially, the next item in the returned list
+    is the closest one to previous one, e.g.
+    [shape(0), closest_in_remaining(n-1), closest_in_remaining(n-2), closest_in_remaining(n-3) ...].
+    This can be refered to as a greedy Nearest Neighbour algorithm
+    """
+    buffer = [shapes[0]]
+
+    for _ in tqdm(range(len(shapes) - 2)):
+        # find closest shape to last shape in buffer
+        closest_shape = min(
+            shapes, key=partial(distSq_to_shape, point=buffer[-1].vertices[-1]))
+        
+        # remove the shape from the list
+        shapes.pop(shapes.index(closest_shape))
+
+        # if closest point is the end of the shape, revert the shape 
+        if buffer[-1].vertices[-1].distSq(closest_shape.vertices[0]) > \
+            buffer[-1].vertices[-1].distSq(closest_shape.vertices[-1]):
+            closest_shape.vertices = [s for s in reversed(closest_shape.vertices)]
+        buffer.append(closest_shape)
+
+    # add the remaining shape in the list
+    buffer.append(shapes[0])
+    return buffer
 
 def json_to_shapes(json_file) -> Tuple[List[Shape], float]:
     # get either the shape list or the single shape as a list of shape
@@ -531,6 +568,11 @@ def draw_from_json(args: argparse.Namespace, ax: Axifresco) -> None:
     print('Expanding shape to fit the paper')
     shapes = ax.fit_to_paper(shapes, aspect_ratio)
 
+    # optimize path
+    if args.optimize:
+        print('Optimizing drawing path')
+        shapes = optimise_simple(shapes)
+
     # draw
     print('Drawing...')
     ax.draw_shapes(shapes, ask_verification=True, allow_pause=True, go_home=True)
@@ -558,6 +600,9 @@ if __name__ == "__main__":
                              help='Paper size. Specify either a3, a4, a5, A3, A4, A5, '
                              'or a custom size in mm, e.g. 209 458 for a paper of 209mm '
                              'wide by 458mm long')
+    file_parser.add_argument('--optimize', action='store_true',
+                             help='Enables path optimization to try and minimize the '
+                             'amount of time the pen will be moved in the air')
     axidraw_parser = parser.add_argument_group('axidraw options')
     axidraw_parser.add_argument('--speed-pendown', type=int,
                                 help='Maximum XY speed when the pen is down (plotting). (1-100)')

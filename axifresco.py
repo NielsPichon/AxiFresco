@@ -47,17 +47,35 @@ class Point:
     x: float = 0
     y: float = 0
 
+    def __neg__(self):
+        return Point(-self.x, -self.y)
+
     def __add__(self, b):
         if isinstance(b, Point):
             return Point(self.x + b.x, self.y + b.y)
         else:
-            return Point(self.x + b, self.y + b) 
+            return Point(self.x + b, self.y + b)
+    
+    def __radd__(self, b):
+        return self + b
 
     def __sub__(self, b):
         if isinstance(b, Point):
             return Point(self.x - b.x, self.y - b.y)
         else:
-            return Point(self.x - b, self.y - b) 
+            return Point(self.x - b, self.y - b)
+    
+    def __rsub__(self, b):
+        return -self + b
+
+    def __mul__(self, b):
+        if isinstance(b, Point):
+            return Point(self.x * b.x, self.y * b.y)
+        else:
+            return Point(self.x * b, self.y * b)
+    
+    def __rmul__(self, b):
+        return self * b
     
     def __truediv__(self, b):
         if isinstance(b, Point):
@@ -101,7 +119,7 @@ class Shape:
         d = 0.5 * (2 * p1)
         return a, b, c, d
 
-    def get_segment(self, idx: int) -> List[Point]:
+    def get_segment(self, idx: int, resolution: int = 10) -> List[Point]:
         """
         Returns a list of points describing the edge
         starting at the specified point.
@@ -148,8 +166,8 @@ class Shape:
             a, b, c, d = self.catmull_rom(p0, p1, p2, p3)
             # create 100 gradutations along the spline
             pts = [self.vertices[idx]]
-            for t in list(range(100))[1:-1]:
-                t = t / 100
+            for t in list(range(resolution))[1:-1]:
+                t = t / resolution
                 pts.append(d + t * (c + t * (b + t * a)))
             pts.append(self.vertices[idx + 1])
 
@@ -160,7 +178,9 @@ class Axifresco:
     The main class to handle communication with the axidraw 
     """
 
-    def __init__(self, config: Dict = None, reset=False) -> None:
+    def __init__(self, config: Dict = None, reset=False, resolution:int = 10) -> None:
+        self.resolution = resolution
+
         # initialise axidraw API
         self.axidraw = axidraw.AxiDraw()
         self.axidraw.interactive()
@@ -348,7 +368,7 @@ class Axifresco:
         # draw line from point to point in shape
         for idx in range(len(shape.vertices) - 1):
             # get all points on the edge from current point to the next one
-            points = shape.get_segment(idx)
+            points = shape.get_segment(idx, self.resolution)
             # draw line from point to point, starting from the next one on the edge
             for point in points[1:]:
                 if not self.line_to(point):
@@ -609,6 +629,9 @@ if __name__ == "__main__":
     file_parser.add_argument('--margin', type=int, default=0, help='Enforces a margin (in mm) '
                              'on the paper. Because the drawing will always be scaled to occupy '
                              'all available space, this means the drawing will indeed be smaller.')
+    file_parser.add_argument('--resolution', type=int, default=10,
+                             help='When drawing spline based shapes, defines the number of '
+                             'subdivisions to apply to the shape')
     axidraw_parser = parser.add_argument_group('axidraw options')
     axidraw_parser.add_argument('--speed-pendown', type=int,
                                 help='Maximum XY speed when the pen is down (plotting). (1-100)')
@@ -638,7 +661,7 @@ if __name__ == "__main__":
     # init axidraw
     print('Initialisizing Axidraw...')
     try:
-        ax = Axifresco(config=config, reset=args.reset)
+        ax = Axifresco(config=config, reset=args.reset, resolution=args.resolution)
         
         if args.reset:
             ax.stop_motors()

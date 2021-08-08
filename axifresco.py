@@ -376,19 +376,22 @@ class Axifresco:
         if self.is_connected:
             self.axidraw.disconnect()
 
-    def fit_to_paper(self, shapes: List[Shape], aspect_ratio: float):
-        if aspect_ratio > 1:
-            for shape in shapes:
-                for point in shape.vertices:
-                    point.x *= self.format.x
-                    point.y = self.format.y / 2 + (point.y - 0.5) * \
-                        self.format.x / aspect_ratio
-        else:
-            for shape in shapes:
-                for point in shape.vertices:
-                    point.y *= self.format.y
-                    point.x = self.format.x / 2 + (point.x - 0.5) * \
-                        self.format.y / aspect_ratio          
+    def fit_to_paper(self, shapes: List[Shape], aspect_ratio: float, margin: float):
+        #scale_xx is the scale in x if a point with 1 in absciss is mapped to the
+        # edge of the paper minus the margin   
+        sscale_xx = self.format.x - 2 * margin
+        #scale_xy is the scale in x if a point with 1 in ordinate is mapped to the
+        # edge of the paper minus the margin
+        sscale_xy = (self.format.y - 2 * margin) * aspect_ratio
+        # we keep the smallest of the 2 scales
+        scale_X = min(sscale_xx, sscale_xy)
+        scale_Y = scale_X / aspect_ratio
+
+        # scale all points
+        for shape in shapes:
+            for point in shape.vertices:
+                point.x *= self.format.x / 2 + (point.x - 0.5) * scale_X
+                point.y *= self.format.y / 2 + (point.y - 0.5) * scale_Y
 
         return shapes  
 
@@ -566,7 +569,7 @@ def draw_from_json(args: argparse.Namespace, ax: Axifresco) -> None:
     shapes, aspect_ratio = json_to_shapes(shapes)
 
     print('Expanding shape to fit the paper')
-    shapes = ax.fit_to_paper(shapes, aspect_ratio)
+    shapes = ax.fit_to_paper(shapes, aspect_ratio, args.margin)
 
     # optimize path
     if args.optimize:
@@ -603,6 +606,9 @@ if __name__ == "__main__":
     file_parser.add_argument('--optimize', action='store_true',
                              help='Enables path optimization to try and minimize the '
                              'amount of time the pen will be moved in the air')
+    file_parser.add_argument('--margin', type=int, default=0, help='Enforces a margin (in mm) '
+                             'on the paper. Because the drawing will always be scaled to occupy '
+                             'all available space, this means the drawing will indeed be smaller.')
     axidraw_parser = parser.add_argument_group('axidraw options')
     axidraw_parser.add_argument('--speed-pendown', type=int,
                                 help='Maximum XY speed when the pen is down (plotting). (1-100)')

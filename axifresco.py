@@ -421,7 +421,7 @@ def distSq_to_shape(shape: Shape, point: Point) -> float:
     """
     return min(point.distSq(shape.vertices[0]), point.distSq(shape.vertices[1]))
 
-def optimise_simple(shapes: List[Shape]) -> List[Shape]:
+def optimize_simple(shapes: List[Shape]) -> List[Shape]:
     """
     Simple "sort" of list of shape. Essentially, the next item in the returned list
     is the closest one to previous one, e.g.
@@ -429,8 +429,9 @@ def optimise_simple(shapes: List[Shape]) -> List[Shape]:
     This can be refered to as a greedy Nearest Neighbour algorithm
     """
     buffer = [shapes[0]]
+    shapes = shapes[1:]
 
-    for _ in tqdm(range(len(shapes) - 2)):
+    for _ in tqdm(range(len(shapes) - 1)):
         # find closest shape to last shape in buffer
         closest_shape = min(
             shapes, key=partial(distSq_to_shape, point=buffer[-1].vertices[-1]))
@@ -445,6 +446,9 @@ def optimise_simple(shapes: List[Shape]) -> List[Shape]:
         buffer.append(closest_shape)
 
     # add the remaining shape in the list
+    if buffer[-1].vertices[-1].distSq(shapes[0].vertices[0]) > \
+        buffer[-1].vertices[-1].distSq(shapes[0].vertices[-1]):
+        shapes[0].vertices = [s for s in reversed(shapes[0].vertices)]
     buffer.append(shapes[0])
     return buffer
 
@@ -594,7 +598,7 @@ def draw_from_json(args: argparse.Namespace, ax: Axifresco) -> None:
     # optimize path
     if args.optimize:
         print('Optimizing drawing path')
-        shapes = optimise_simple(shapes)
+        shapes = optimize_simple(shapes)
 
     # draw
     print('Drawing...')

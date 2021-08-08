@@ -346,9 +346,9 @@ class Axifresco:
             return False
 
         # draw line from point to point in shape
-        for idx in range(len(shape.vertices) - 2):
+        for idx in range(len(shape.vertices) - 1):
             # get all points on the edge from current point to the next one
-            points = shape.get_segment(idx + 1)
+            points = shape.get_segment(idx)
             # draw line from point to point, starting from the next one on the edge
             for point in points[1:]:
                 if not self.line_to(point):
@@ -374,24 +374,24 @@ class Axifresco:
         self.stop_motors()
 
         if self.is_connected:
-            self.axidraw.disconnect()
+            self.axidraw.disconnect()   
 
     def fit_to_paper(self, shapes: List[Shape], aspect_ratio: float, margin: float):
         #scale_xx is the scale in x if a point with 1 in absciss is mapped to the
         # edge of the paper minus the margin   
-        sscale_xx = self.format.x - 2 * margin
+        scale_xx = self.format.x - 2 * margin
         #scale_xy is the scale in x if a point with 1 in ordinate is mapped to the
         # edge of the paper minus the margin
-        sscale_xy = (self.format.y - 2 * margin) * aspect_ratio
+        scale_xy = (self.format.y - 2 * margin) * aspect_ratio
         # we keep the smallest of the 2 scales
-        scale_X = min(sscale_xx, sscale_xy)
+        scale_X = min(scale_xx, scale_xy)
         scale_Y = scale_X / aspect_ratio
 
         # scale all points
         for shape in shapes:
             for point in shape.vertices:
-                point.x *= self.format.x / 2 + (point.x - 0.5) * scale_X
-                point.y *= self.format.y / 2 + (point.y - 0.5) * scale_Y
+                point.x = self.format.x / 2 + (point.x - 0.5) * scale_X
+                point.y = self.format.y / 2 + (point.y - 0.5) * scale_Y
 
         return shapes  
 

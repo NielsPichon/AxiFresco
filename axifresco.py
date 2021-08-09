@@ -187,6 +187,8 @@ class Axifresco:
 
         # init pause toggle
         self.pause = Event()
+        #init abort toggle
+        self.abort = Event()
 
         # set configuration
         if config is None:
@@ -256,19 +258,20 @@ class Axifresco:
                 if allow_pause:
                     # create a thread which listens for key presses and pauses the
                     # draw process accordingly
-                    # is_done = Event()
-                    # key_thread = Thread(target=keypoll, args=(self.pause, is_done))
-                    def on_press(key, pause_event):
-                        if key == keyboard.Key.space:
-                            if pause_event.is_set():
-                                print('Resuming draw.')
-                                pause_event.clear()
-                            else:
-                                pause_event.set()
-                                print('Pause... Press [space] to resume.')
+                    def on_press(key, pause_event, abort_event):
+                        if not abort_event.is_set():
+                            if key == keyboard.Key.space:
+                                if pause_event.is_set():
+                                    print('Resuming draw.')
+                                    pause_event.clear()
+                                else:
+                                    pause_event.set()
+                                    print('Pause... Press [space] to resume or [escape] to abort.')
+                            if key == keyboard.Key.esc and pause_event.is_set():
+                                abort_event.set()
 
                     key_thread = keyboard.Listener(
-                        on_press=partial(on_press, pause_event=self.pause))
+                        on_press=partial(on_press, pause_event=self.pause, abort_event=self.abort))
 
                     print('Pause the drawing at any point by pressing [SPACEBAR]')
                     key_thread.start()
@@ -351,6 +354,15 @@ class Axifresco:
 
     def wait_for_resume(self) -> None:
         while self.pause.is_set():
+            if self.abort.is_set():
+                print('Aborting...')
+                try:
+                    self.pause.clear()
+                    self.move_home()
+                    self.close()
+                except:
+                    print('Something went wrong when aborting')
+                exit()
             time.sleep(0.1)
 
     @do_action

@@ -3,3 +3,4 @@ tqdm
 Flask
 colorama
 pynput
+natsort

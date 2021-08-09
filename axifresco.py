@@ -1,6 +1,6 @@
 import argparse
 import atexit
-from os import close, name
+import os
 import time
 import json
 from functools import partial
@@ -14,6 +14,7 @@ from pyaxidraw import axidraw
 import colorama
 from colorama import Fore
 from pynput import keyboard
+from natsort import natsorted
 
 
 colorama.init(autoreset=True)
@@ -598,10 +599,10 @@ def args_to_config(args) -> Dict:
     print('Axidraw config:', config)
     return config
 
-def draw_from_json(args: argparse.Namespace, ax: Axifresco) -> None:
+def draw_from_json(args: argparse.Namespace, filename: str, ax: Axifresco) -> None:
     # load file
-    print('Loading file')
-    with open(args.filename, 'r') as f:
+    print(f'Loading file {filename}')
+    with open(filename, 'r') as f:
         shapes = json.load(f)
 
     # convert to shape and fit to paper
@@ -638,7 +639,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         'Loads a json file describing some Fresco shapes and prints them on an Axidraw')
     file_parser = parser.add_argument_group('file options')
-    file_parser.add_argument('--filename', type=str, required=True, help='Path to file')
+    file_parser.add_argument('--filename', type=str, required=True, help='Path to file to draw or directory. '
+                             'If a directory is specified, all the files in the directory will be drawn as '
+                             'separate layers, in alphabetical order')
     file_parser.add_argument('--paper-size', type=get_canvas_size, default=FORMATS.A3, nargs='+',
                              help='Paper size. Specify either a3, a4, a5, A3, A4, A5, '
                              'or a custom size in mm, e.g. 209 458 for a paper of 209mm '
@@ -688,7 +691,14 @@ if __name__ == "__main__":
         elif args.test:
             test(ax)
         else:
-            draw_from_json(args, ax)
+            if os.path.isdir(args.filename):
+                files = os.listdir(args.filename)
+                files = natsorted(files)
+            else:
+                files = [args.filename]
+
+            for file in files:
+                draw_from_json(args, file, ax)
 
         try:
             ax.close()

@@ -694,6 +694,7 @@ if __name__ == "__main__":
             if os.path.isdir(args.filename):
                 files = os.listdir(args.filename)
                 files = natsorted(files)
+                files = [args.filename + '/' + file for file in files]
             else:
                 files = [args.filename]
 

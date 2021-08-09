@@ -356,6 +356,10 @@ class Axifresco:
     @do_action
     def draw_shape(self, shape: Shape) -> bool:
         # quickly go through all points and make sure are within bounds of the canvas
+        if not shape.isPolygonal:
+            self.set_config({'const_speed': True})
+        else:
+            self.set_config({'const_speed': False})
         for point in shape.vertices:
             if point.x < 0 or point.y < 0 or point.x > self.format.x or point.y > self.format.y:
                 self.error("The drawing extends outside the paper. Will not draw")
@@ -576,7 +580,7 @@ def args_to_config(args) -> Dict:
 
     for option in OPTIONS:
         if option not in ignored:
-            opt = getattr(args, option)
+            opt = getattr(args, option, None)
             if opt is not None:
                 config[option] = opt
     print('Axidraw config:', config)
@@ -640,7 +644,8 @@ if __name__ == "__main__":
     axidraw_parser.add_argument('--speed-pendown', type=int,
                                 help='Maximum XY speed when the pen is down (plotting). (1-100)')
     axidraw_parser.add_argument('--speed-penup', type=int, help='Maximum XY speed when the pen is up. (1-100)')
-    axidraw_parser.add_argument('--accel', type=int, help='Relative acceleration/deceleration speed. (1-100)')
+    axidraw_parser.add_argument('--accel', type=int, help='Relative acceleration/deceleration speed. '
+                                'This will be ignored for non polygonal shapes(1-100)')
     axidraw_parser.add_argument('--pen-pos-down', type=int,
                                 help='Pen height when the pen is down (plotting). (0-100)')
     axidraw_parser.add_argument('--pen-pos-up', help='Pen height when the pen is up. (0-100)')
@@ -648,8 +653,6 @@ if __name__ == "__main__":
     axidraw_parser.add_argument('--pen-rate-raise', help='Speed of raising the pen-lift motor. (1-100)')
     axidraw_parser.add_argument('--pen-delay-down', help='Added delay after lowering pen. (ms)')
     axidraw_parser.add_argument('--pen-delay-up', help='Added delay after raising pen. (ms)')
-    axidraw_parser.add_argument('--const-speed', action='store_true',
-                                help='Use constant speed when pen is down.')
     axidraw_parser.add_argument('--model', type=get_model, default=2, choices=['V3', 'SE/A3', 'XLX', 'MiniKit'],
                                 help='Select model of AxiDraw hardware.')
     axidraw_parser.add_argument('--port', help='Specify a USB port or AxiDraw to use.')

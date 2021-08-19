@@ -107,7 +107,8 @@ class FORMATS:
 @dataclass
 class Shape:
     vertices: List[Point]
-    isPolygonal: bool
+    is_polygonal: bool
+    ignore_ends: bool = False
 
     def catmull_rom(self, p0: Point, p1: Point, p2: Point, p3: Point) -> List[float]:
         """
@@ -136,7 +137,7 @@ class Shape:
 
         # else if polygonal, simply return the point at the
         # specified index and the next one
-        if self.isPolygonal:
+        if self.is_polygonal:
             return [self.vertices[idx], self.vertices[idx + 1]]
         # else if made of splines, retrieve control points of the spline,
         # that is the point, the one before and the 2 after.
@@ -378,7 +379,7 @@ class Axifresco:
     @do_action
     def draw_shape(self, shape: Shape) -> bool:
         # quickly go through all points and make sure are within bounds of the canvas
-        if not shape.isPolygonal:
+        if not shape.is_polygonal:
             self.set_config({'const_speed': True})
         else:
             self.set_config({'const_speed': False})
@@ -489,7 +490,7 @@ def json_to_shapes(json_file) -> Tuple[List[Shape], float]:
     for shape in shapes:
         new_shape = Shape(
             vertices=[Point(vertex['x'], vertex['y']) for vertex in shape['vertices']],
-            isPolygonal=shape['isPolygonal']
+            is_polygonal=shape['isPolygonal']
         )
         buffer.append(new_shape)
     

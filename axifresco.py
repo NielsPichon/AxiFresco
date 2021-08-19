@@ -327,6 +327,15 @@ class Axifresco:
             self.error(e)
             return False
         return True
+    
+    @do_action
+    def pen_down(self) -> bool:
+        try:
+            self.axidraw.pendown()
+        except Exception as e:
+            self.error(e)
+            return False
+        return True
 
     @do_action
     def move_to(self, point: Point) -> bool:
@@ -382,14 +391,18 @@ class Axifresco:
         if not self.move_to(shape.vertices[0]):
             return False
 
-        # draw line from point to point in shape
-        for idx in range(len(shape.vertices) - 1):
-            # get all points on the edge from current point to the next one
-            points = shape.get_segment(idx, self.resolution)
-            # draw line from point to point, starting from the next one on the edge
-            for point in points[1:]:
-                if not self.line_to(point):
-                    return False
+        if len(shape.vertices) == 1:
+            self.pen_down()
+            self.pen_up()
+        else:
+            # draw line from point to point in shape
+            for idx in range(len(shape.vertices) - 1):
+                # get all points on the edge from current point to the next one
+                points = shape.get_segment(idx, self.resolution)
+                # draw line from point to point, starting from the next one on the edge
+                for point in points[1:]:
+                    if not self.line_to(point):
+                        return False
 
         return True
 

@@ -16,3 +16,8 @@ Install requirements with `pip install -r requirements.txt`
 
 To see options:
 `python axifresco -h` 
+
+
+## Acknowledgement
+JSON Hershey fonts are from https://github.com/techninja/hersheytextjs
+which is a port to JSON of EvilMadScientist's fonts of the same name. 

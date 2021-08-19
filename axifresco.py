@@ -388,8 +388,12 @@ class Axifresco:
                 self.error("The drawing extends outside the paper. Will not draw")
                 return False
         if len(shape.vertices) > 0:
+            if shape.ignore_ends:
+                start = shape.vertices[1]
+            else:
+                start = shape.vertices[0]
             # move to start of shape
-            if not self.move_to(shape.vertices[0]):
+            if not self.move_to(start):
                 return False
 
             if len(shape.vertices) == 1:
@@ -397,7 +401,10 @@ class Axifresco:
                 self.pen_up()
             else:
                 # draw line from point to point in shape
-                for idx in range(len(shape.vertices) - 1):
+                num_lines = len(shape.vertices) - 1
+                if shape.ignore_ends:
+                    num_lines -= 1
+                for idx in range(num_lines):
                     # get all points on the edge from current point to the next one
                     points = shape.get_segment(idx, self.resolution)
                     # draw line from point to point, starting from the next one on the edge

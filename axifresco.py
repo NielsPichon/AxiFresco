@@ -7,7 +7,8 @@ from functools import partial
 from typing import Dict, List, NoReturn, Tuple
 from dataclasses import dataclass
 from multiprocessing import Queue
-from threading import Event, Thread
+from threading import Event
+
 
 from tqdm import tqdm
 from pyaxidraw import axidraw
@@ -15,6 +16,7 @@ import colorama
 from colorama import Fore
 from pynput import keyboard
 from natsort import natsorted
+from PIL import Image, ImageDraw
 
 
 colorama.init(autoreset=True)
@@ -174,6 +176,40 @@ class Shape:
             pts.append(self.vertices[idx + 1])
 
             return pts
+
+    def preview(self, img: Image = None, scale: float = 1) -> Image:
+        """
+        Draw the shape using PIL. If an img is provided as
+        argument, use this one. Else create a new one.
+        """
+        if img is None:
+            img = Image.new('RGB', (1000, 1000), (0, 0, 0))
+            draw = ImageDraw.Draw(img)
+        
+        if len(self.vertices) > 0:
+            x = []
+            y = []
+            for idx in range(len(self.vertices)):
+                if self.ignore_ends and idx == 0 or idx == len(self.vertices) - 1:
+                    continue
+                points = self.get_segment(idx, 10)
+
+                for vtx in points:
+                    x.append(vtx.x)
+                    y.append(vtx.y)
+
+            x = [500 + (xx - (max(x) + min(x)) * 0.5) * scale for xx in x]
+            y = [500 + (yy - (max(y) + min(y)) * 0.5) * scale for yy in y]
+            
+            xy = []
+            for xx, yy in zip(x, y):
+                xy.append(xx)
+                xy.append(yy)
+
+            draw.line(xy, fill=(255, 255, 255), width=3)
+
+        return img
+
 
 class Axifresco:
     """

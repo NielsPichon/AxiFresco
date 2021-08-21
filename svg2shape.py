@@ -1,3 +1,4 @@
+import sys
 import json
 from typing import List
 
@@ -11,7 +12,7 @@ def bezier_to_catmull(vertices: List[Point]) -> Shape:
         vertices[3]  + 6 * (vertices[0] - vertices[1]),
         vertices[0],
         vertices[3],
-        vertices[0] + 6 (vertices[3] - vertices[2])
+        vertices[0] + 6 * (vertices[3] - vertices[2])
     ]
 
     return Shape(catmull_vtx, is_polygonal=False, ignore_ends=True)
@@ -103,14 +104,22 @@ def convert_font_to_catmull(json_file, font_name):
                 canvas_height=1
             )
 
+    characters = []
     for i, char in tqdm(enumerate(svg_font)):
         # convert char to Shape
         character = svg2shape(char['d'])
+        if len(sys.argv) > 1 and bool(sys.argv[1]) == True:
+            img = None
+            for s in character:
+                img = s.preview(img, 10)
+            img.show()
+            input('Press any key to continue...')
         # make into a json friendly format
         character = {'shapes' : [JSONShape(s) for s in character]}
-        # export
-        with open('./fonts/' + font_name + '_' + str(i) + '.json', 'w') as f:
-            f.write(json.dumps(character))
+        characters.append(character)
+    # export
+    with open('./fonts/' + font_name + '.json', 'w') as f:
+        f.write(json.dumps(characters))
 
 
 if __name__ == '__main__':

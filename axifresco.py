@@ -680,6 +680,9 @@ def draw_from_json(args: argparse.Namespace, filename: str, ax: Axifresco) -> No
         for shape in shapes:
             img = shape.preview(img, scale=1, center=False)
         plt.imshow(img)
+        print('If the displayed image does not correspond to what is expected, '
+              'simply press ctrl-c in the terminal. Otherwise, close the '
+            'preview window and continue normally.')
         plt.show()
         img.close()
 

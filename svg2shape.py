@@ -42,15 +42,17 @@ def svg2shape(svg: str) -> List[Shape]:
     for instruction in svg:
         # switch state on instruction being preceded by a letter
         if len(instruction[0]) > 1:
-            new_state = mapping.get(instruction[0][0], states.UNKNOWN)
-            instruction[0] = instruction[0][1]
+            if instruction[0][0].isalpha():
+                new_state = mapping.get(instruction[0][0], states.UNKNOWN)
+                instruction[0] = instruction[0][1:]
 
-            # if switching to a bezier instruction, end the shape and create a new one
-            # which will hold the bezier curve
-            if new_state == states.BEZIER and state != states.BEZIER:
-                if len(vertex_buffer) > 0:
-                    shapes.append(Shape(vertex_buffer, True))
-                vertex_buffer = [vertex_buffer[-1]]
+                # if switching to a bezier instruction, end the shape and create a new one
+                # which will hold the bezier curve
+                if new_state == states.BEZIER and state != states.BEZIER:
+                    if len(vertex_buffer) > 0:
+                        shapes.append(Shape(vertex_buffer, True))
+                    vertex_buffer = [vertex_buffer[-1]]
+                state = new_state
 
         if state == states.MOVE:
             if len(vertex_buffer) > 0:
@@ -112,7 +114,7 @@ def convert_font_to_catmull(json_file, font_name):
         if len(sys.argv) > 1 and bool(sys.argv[1]) == True:
             img = None
             for s in character:
-                img = s.preview(img, 10)
+                img = s.preview(img, 10, center=False)
             plt.imshow(img)
             plt.show()
             img.close()

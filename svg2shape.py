@@ -107,8 +107,9 @@ def convert_font_to_catmull(json_file, font_name):
                 canvas_height=1
             )
 
-    characters = []
+    characters = {}
     for i, char in tqdm(enumerate(svg_font)):
+        letter = (i + 32).to_bytes(1, 'little').decode('utf-8')
         # convert char to Shape
         character = svg2shape(char['d'])
         if len(sys.argv) > 1 and bool(sys.argv[1]) == True:
@@ -120,7 +121,9 @@ def convert_font_to_catmull(json_file, font_name):
             img.close()
         # make into a json friendly format
         character = {'shapes' : [JSONShape(s) for s in character]}
-        characters.append(character)
+        characters[letter] = character
+    print('Supported character:')
+    print(''.join(list(characters.keys())))
     # export
     with open('./fonts/' + font_name + '.json', 'w') as f:
         f.write(json.dumps(characters))

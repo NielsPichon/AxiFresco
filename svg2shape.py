@@ -83,11 +83,12 @@ def convert_font_to_catmull(json_file, font_name):
 
     svg_font = svg_fonts[font_name]["chars"]
 
-    class JSONPoint(dict):
+    class JSONPoint(dict, Point):
         def __init__(self, point: Point):
-            dict.__init__(self, x=point.x, y = point.y)    
+            dict.__init__(self, x=point.x, y = point.y)
+            Point.__init__(self, point.x, point.y)
 
-    class JSONShape(dict):
+    class JSONShape(dict, Shape):
         def __init__(self, shape: Shape):
             max_x = max([v.x for v in shape.vertices])
             min_x = min([v.x for v in shape.vertices])
@@ -106,10 +107,11 @@ def convert_font_to_catmull(json_file, font_name):
                 ignore_ends=shape.ignore_ends, canvas_width=1,
                 canvas_height=1
             )
+            Shape.__init__(self, vertices, shape.is_polygonal, shape.ignore_ends)
 
     characters = {}
-    for i, char in tqdm(enumerate(svg_font)):
-        letter = (i + 32).to_bytes(1, 'little').decode('utf-8')
+    for i, char in enumerate(svg_font[:-1]):
+        letter = (i + 33).to_bytes(1, 'little').decode('utf-8')
         # convert char to Shape
         character = svg2shape(char['d'])
         if len(sys.argv) > 1 and bool(sys.argv[1]) == True:

@@ -17,6 +17,7 @@ from colorama import Fore
 from pynput import keyboard
 from natsort import natsorted
 from PIL import Image, ImageDraw
+import matplotlib.pyplot as plt 
 
 
 colorama.init(autoreset=True)
@@ -177,14 +178,14 @@ class Shape:
 
             return pts
 
-    def preview(self, img: Image = None, scale: float = 1) -> Image:
+    def preview(self, img: Image = None, scale: float = 1, center: bool = True) -> Image:
         """
         Draw the shape using PIL. If an img is provided as
         argument, use this one. Else create a new one.
         """
         if img is None:
             img = Image.new('RGB', (1000, 1000), (0, 0, 0))
-            draw = ImageDraw.Draw(img)
+        draw = ImageDraw.Draw(img)
         
         if len(self.vertices) > 0:
             x = []
@@ -195,18 +196,19 @@ class Shape:
                 points = self.get_segment(idx, 10)
 
                 for vtx in points:
-                    x.append(vtx.x)
-                    y.append(vtx.y)
+                    x.append(vtx.x * scale)
+                    y.append(vtx.y * scale)
 
-            x = [500 + (xx - (max(x) + min(x)) * 0.5) * scale for xx in x]
-            y = [500 + (yy - (max(y) + min(y)) * 0.5) * scale for yy in y]
+            if center:
+                x = [500 + (xx - (max(x) + min(x)) * 0.5) for xx in x]
+                y = [500 + (yy - (max(y) + min(y)) * 0.5) for yy in y]
             
             xy = []
             for xx, yy in zip(x, y):
                 xy.append(xx)
                 xy.append(yy)
 
-            draw.line(xy, fill=(255, 255, 255), width=3)
+            draw.line(xy, fill=(255, 255, 255), width=1)
 
         return img
 
@@ -673,6 +675,14 @@ def draw_from_json(args: argparse.Namespace, filename: str, ax: Axifresco) -> No
         print('Optimizing drawing path')
         shapes = optimize_simple(shapes)
 
+    if args.preview:
+        img = Image.new('RGB', (ax.format.x, ax.format.y), (0, 0, 0))
+        for shape in shapes:
+            img = shape.preview(img, scale=1, center=False)
+        plt.imshow(img)
+        plt.show()
+        img.close()
+
     # draw
     print('Drawing...')
     ax.draw_shapes(shapes, ask_verification=True, allow_pause=True, go_home=True)
@@ -711,6 +721,7 @@ if __name__ == "__main__":
     file_parser.add_argument('--resolution', type=int, default=10,
                              help='When drawing spline based shapes, defines the number of '
                              'subdivisions to apply to the shape')
+    file_parser.add_argument('--preview', action='store_true', help='Preview the drawing')
     axidraw_parser = parser.add_argument_group('axidraw options')
     axidraw_parser.add_argument('--speed-pendown', type=int,
                                 help='Maximum XY speed when the pen is down (plotting). (1-100)')

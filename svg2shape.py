@@ -3,6 +3,7 @@ import json
 from typing import List
 
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 from axifresco import Shape, Point
 
@@ -112,8 +113,9 @@ def convert_font_to_catmull(json_file, font_name):
             img = None
             for s in character:
                 img = s.preview(img, 10)
-            img.show()
-            input('Press any key to continue...')
+            plt.imshow(img)
+            plt.show()
+            img.close()
         # make into a json friendly format
         character = {'shapes' : [JSONShape(s) for s in character]}
         characters.append(character)

@@ -5,3 +5,4 @@ colorama
 pynput
 natsort
 Pillow
+matplotlib

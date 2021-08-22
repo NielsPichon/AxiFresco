@@ -90,18 +90,8 @@ def convert_font_to_catmull(json_file, font_name):
 
     class JSONShape(dict, Shape):
         def __init__(self, shape: Shape):
-            max_x = max([v.x for v in shape.vertices])
-            min_x = min([v.x for v in shape.vertices])
-            mid_x = 0.5 * (max_x + min_x)
-            size_x = max_x - min_x
-            max_y = max([v.y for v in shape.vertices])
-            min_y = min([v.y for v in shape.vertices])
-            mid_y = 0.5 * (max_y + min_y)
-            size_y = max_y - min_y
-            size = max(size_x, size_y)
-
             # center and normalize character, and make it serializable
-            vertices = [JSONPoint((v - Point(mid_x, mid_y)) / size) for v in shape.vertices] 
+            vertices = [JSONPoint(v) for v in shape.vertices] 
             dict.__init__(
                 self, vertices=vertices, is_polygonal=shape.is_polygonal,
                 ignore_ends=shape.ignore_ends, canvas_width=1,

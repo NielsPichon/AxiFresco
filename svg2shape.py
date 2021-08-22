@@ -112,7 +112,7 @@ def convert_font_to_catmull(json_file, font_name):
             plt.show()
             img.close()
         # make into a json friendly format
-        character = {'shapes' : [JSONShape(s) for s in character]}
+        character = {'shapes' : [JSONShape(s) for s in character], 'width': int(char['o'])}
         characters[letter] = character
     print('Supported character:')
     print(''.join(list(characters.keys())))

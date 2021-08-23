@@ -178,7 +178,9 @@ class Shape:
 
             return pts
 
-    def preview(self, img: Image = None, scale: float = 1, center: bool = True) -> Image:
+    def preview(self, img: Image = None, scale: float = 1,
+                center: bool = True, flipX: bool = False,
+                flipY: bool = False) -> Image:
         """
         Draw the shape using PIL. If an img is provided as
         argument, use this one. Else create a new one.
@@ -198,11 +200,17 @@ class Shape:
                 for vtx in points:
                     x.append(vtx.x * scale)
                     y.append(vtx.y * scale)
+            
+            width, height = img.size
+            if flipX:
+                x = [width - xx for xx in x]
+            if flipY:
+                y = [height - yy for yy in y]
 
             if center:
-                x = [500 + (xx - (max(x) + min(x)) * 0.5) for xx in x]
-                y = [500 + (yy - (max(y) + min(y)) * 0.5) for yy in y]
-            
+                x = [width + (xx - (max(x) + min(x)) * 0.5) for xx in x]
+                y = [height + (yy - (max(y) + min(y)) * 0.5) for yy in y]
+
             xy = []
             for xx, yy in zip(x, y):
                 xy.append(xx)
@@ -678,7 +686,7 @@ def draw_from_json(args: argparse.Namespace, filename: str, ax: Axifresco) -> No
     if args.preview:
         img = Image.new('RGB', (ax.format.x, ax.format.y), (0, 0, 0))
         for shape in shapes:
-            img = shape.preview(img, scale=1, center=False)
+            img = shape.preview(img, scale=1, center=False, flipX=False, flipY=True)
         plt.imshow(img)
         print('If the displayed image does not correspond to what is expected, '
               'simply press ctrl-c in the terminal. Otherwise, close the '

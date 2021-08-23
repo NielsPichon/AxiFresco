@@ -635,7 +635,7 @@ def get_canvas_size(size):
     """
     Convert argparse arguments into an actual usable format
     """
-    if type(size, List[str]):
+    if len(size) > 1:
         if len(size) != 2:
             raise Exception(
                 'If specifying a custom paper size, specify it as [width] [length]')
@@ -649,7 +649,7 @@ def get_canvas_size(size):
             'A4': FORMATS.A4,
             'A5': FORMATS.A5,
         }
-        return sizes[size]
+        return sizes[size[0]]
 
 def args_to_config(args) -> Dict:
     """
@@ -698,7 +698,7 @@ def draw_from_json(args: argparse.Namespace, filename: str, ax: Axifresco) -> No
     print('Drawing...')
     ax.draw_shapes(shapes, ask_verification=True, allow_pause=True, go_home=True)
 
-def test(ax: Axifresco) -> None:
+def test_center(ax: Axifresco) -> None:
     """
     Move the pen to the center of the canvas and then back to home
     """
@@ -719,7 +719,7 @@ if __name__ == "__main__":
     file_parser.add_argument('--filename', type=str, required=True, help='Path to file to draw or directory. '
                              'If a directory is specified, all the files in the directory will be drawn as '
                              'separate layers, in alphabetical order')
-    file_parser.add_argument('--paper-size', type=get_canvas_size, default=FORMATS.A3, nargs='+',
+    file_parser.add_argument('--paper-size', type=str, default='a3', nargs='+',
                              help='Paper size. Specify either a3, a4, a5, A3, A4, A5, '
                              'or a custom size in mm, e.g. 209 458 for a paper of 209mm '
                              'wide by 458mm long')
@@ -751,23 +751,28 @@ if __name__ == "__main__":
     axidraw_parser.add_argument('--port', help='Specify a USB port or AxiDraw to use.')
     axidraw_parser.add_argument('--port-config', type=int,
                                 help='Override how the USB ports are located. (0-2)')
-    axidraw_parser.add_argument('--test', action='store_true', help='Test which will move the pen to '
+    axidraw_parser.add_argument('--test-center', action='store_true', help='Test which will move the pen to '
                                 'the center of the canvas and then back home')
     axidraw_parser.add_argument('--reset', action='store_true', help='Simply lifts the penup and switches off the motors')
 
     args = parser.parse_args()
     config = args_to_config(args)
 
+
     # init axidraw
     print('Initialisizing Axidraw...')
     try:
         ax = Axifresco(config=config, reset=args.reset, resolution=args.resolution)
+
+        args.paper_size = get_canvas_size(args.paper_size)
+        ax.set_format(args.paper_size)
+
         
         if args.reset:
             ax.stop_motors()
             ax.axidraw.disconnect()
-        elif args.test:
-            test(ax)
+        elif args.test_center:
+            test_center(ax)
         else:
             if os.path.isdir(args.filename):
                 files = os.listdir(args.filename)

@@ -226,15 +226,21 @@ class Axifresco:
     The main class to handle communication with the axidraw 
     """
 
-    def __init__(self, config: Dict = None, reset=False, resolution:int = 10) -> None:
+    def __init__(self, config: Dict = None, reset=False, resolution: int = 10,
+                 unsafe: bool = False, pause_event: Event = None) -> None:
+        # set the spline resolution
         self.resolution = resolution
+
+        # set the safety mode. Unsafe means the axidraw will not
+        # ask for confirmation before doing things.
+        self.unsafe = unsafe
 
         # initialise axidraw API
         self.axidraw = axidraw.AxiDraw()
         self.axidraw.interactive()
 
         # init pause toggle
-        self.pause = Event()
+        self.pause = pause_event if pause_event is not None else Event()
         #init abort toggle
         self.abort = Event()
 
@@ -298,7 +304,7 @@ class Axifresco:
             allow_pause = kwargs.pop('allow_pause', False)
             go_home = kwargs.pop('go_home', False)
 
-            if ask_verification:
+            if ask_verification and not self.unsafe:
                 print(Fore.GREEN + f'Press any key to proceed with {func.__name__}...')
                 input()
 
@@ -551,74 +557,6 @@ def json_to_shapes(json_file) -> Tuple[List[Shape], float]:
 
     return buffer, aspect_ratio
 
-def json_to_config(json_file) -> Dict:
-    pass
-
-def json_to_canvas_size(json_to_file) -> Point:
-    pass
-
-def process_canvas_size_request(q: Queue, canvas_size):
-    """
-    Converts the results of a POST request into a usable config dict and adds it to the server queue
-    """
-    print('Setting canvas size.')
-    point = json_to_canvas_size(canvas_size)
-    q.put(point)
-
-def process_draw_request(q: Queue, draw_request):
-    """
-    Converts the results of a POST request into a usable shapes and adds it to the server queue
-    """
-    print('Adding draw request to queue')
-    shapes = json_to_shapes(draw_request)
-    q.put(shapes)
-
-def process_config_request(q: Queue, config_request):
-    """
-    Converts the results of a POST request into a usable config dict and adds it to the server queue
-    """
-    print('Applying following settings to axidraw:', config_request)
-    json_to_config(config_request)
-    q.put(config_request)
-
-def draw_request(ax, data):
-    """
-    Handles drawing the specified shapes. Designed for use with the server approach
-    """
-    print('Drawing next set of requested shapes in queue.')
-    if not ax.draw_shapes(shapes=data, ask_verification=True):
-        print('Something went wrong during draw and the axidraw '
-            'handler will now exit.')
-        ax.close()
-        exit(1)
-
-def axidraw_runner(q: Queue) -> NoReturn:
-    """
-    Process runner for the axidraw server
-    """
-    print("Initializing Axidraw handler")
-    ax = Axifresco()
-
-    try:
-        while 1:
-            data = q.get()
-            if isinstance(data, List[Shape]):
-                draw_request(ax, data)
-            elif isinstance(data, Point):
-                ax.set_format(data)
-            elif isinstance(data, Dict):
-                ax.set_config(data)
-
-            time.sleep(0.5)
-    except KeyboardInterrupt:
-        print('Shutting down axidraw before exiting')
-        ax.move_home()
-        try:
-            ax.close()
-        except:
-            pass
-        exit(0)
-
 def get_model(model_name: str) -> int:
     """
     Convert argparse arguments into an actual usable model option
@@ -665,25 +603,17 @@ def args_to_config(args) -> Dict:
     print('Axidraw config:', config)
     return config
 
-def draw_from_json(args: argparse.Namespace, filename: str, ax: Axifresco) -> None:
-    # load file
-    print(f'Loading file {filename}')
-    with open(filename, 'r') as f:
-        shapes = json.load(f)
-
-    # convert to shape and fit to paper
-    print('Processing json file')
-    shapes, aspect_ratio = json_to_shapes(shapes)
-
+def draw(shapes: List[Shape], aspect_ratio: float, ax: Axifresco, margin: float,
+         optimize: bool = True, preview: bool = False) -> None:
     print('Expanding shape to fit the paper')
-    shapes = ax.fit_to_paper(shapes, aspect_ratio, args.margin)
+    shapes = ax.fit_to_paper(shapes, aspect_ratio, margin)
 
     # optimize path
-    if args.optimize:
+    if optimize:
         print('Optimizing drawing path')
         shapes = optimize_simple(shapes)
 
-    if args.preview:
+    if preview:
         img = Image.new('RGB', (ax.format.x, ax.format.y), (0, 0, 0))
         for shape in shapes:
             img = shape.preview(img, scale=1, center=False, flipX=False, flipY=True)
@@ -697,6 +627,19 @@ def draw_from_json(args: argparse.Namespace, filename: str, ax: Axifresco) -> No
     # draw
     print('Drawing...')
     ax.draw_shapes(shapes, ask_verification=True, allow_pause=True, go_home=True)
+
+def draw_from_json(args: argparse.Namespace, filename: str, ax: Axifresco) -> None:
+    # load file
+    print(f'Loading file {filename}')
+    with open(filename, 'r') as f:
+        shapes = json.load(f)
+
+    # convert to shape and fit to paper
+    print('Processing json file')
+    shapes, aspect_ratio = json_to_shapes(shapes)
+
+    draw(shapes, aspect_ratio, ax, args.margin, args.optimize, args.preview)
+
 
 def test_center(ax: Axifresco) -> None:
     """

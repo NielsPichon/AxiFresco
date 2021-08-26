@@ -264,9 +264,10 @@ class Axifresco:
             # make sure we disconnect before exiting
             atexit.register(self.close)
 
-            print(Fore.GREEN + 'Please move the axidraw to the home position '
-                'and press a key to continue...')
-            input()
+            if not self.unsafe:
+                print(Fore.GREEN + 'Please move the axidraw to the home position '
+                    'and press a key to continue...')
+                input()
 
     def error(self, text: str) -> None:
         if not isinstance(text, str):

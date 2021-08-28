@@ -1,10 +1,11 @@
 import argparse
 import atexit
 import os
+import threading
 import time
 import json
 from functools import partial
-from typing import Dict, List, NoReturn, Tuple
+from typing import Dict, List, NoReturn, Tuple, Callable, Any, Iterable, Mapping
 from dataclasses import dataclass
 from multiprocessing import Queue
 from threading import Event
@@ -310,7 +311,7 @@ class Axifresco:
                 input()
 
             if self.connect():
-                if allow_pause:
+                if allow_pause and not self.unsafe:
                     # create a thread which listens for key presses and pauses the
                     # draw process accordingly
                     def on_press(key, pause_event, abort_event):
@@ -333,7 +334,7 @@ class Axifresco:
 
                 ret = func(self, *args, **kwargs)
 
-                if allow_pause:
+                if allow_pause and not self.unsafe:
                     # is_done.set()
                     key_thread.stop()
                     key_thread.join()

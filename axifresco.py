@@ -1,6 +1,8 @@
 import argparse
 import atexit
 import os
+from queue import LifoQueue
+from sys import api_version
 import threading
 import time
 import json
@@ -42,6 +44,11 @@ OPTIONS=[
 ]
 
 ignored = ['units']
+
+class Status:
+    PLAYING = 'playing'
+    STOPPED = 'stopped'
+    PAUSED = 'paused'
 
 @dataclass
 class Point:
@@ -228,7 +235,9 @@ class Axifresco:
     """
 
     def __init__(self, config: Dict = None, reset=False, resolution: int = 10,
-                 unsafe: bool = False, pause_event: Event = None) -> None:
+                 unsafe: bool = False, pause_event: Event = None,
+                 abort_event: Event = None,
+                 status_queue: LifoQueue = None) -> None:
         # set the spline resolution
         self.resolution = resolution
 
@@ -243,7 +252,7 @@ class Axifresco:
         # init pause toggle
         self.pause = pause_event if pause_event is not None else Event()
         #init abort toggle
-        self.abort = Event()
+        self.abort = abort_event if abort_event is not None else Event()
 
         # set configuration
         if config is None:
@@ -269,6 +278,9 @@ class Axifresco:
                 print(Fore.GREEN + 'Please move the axidraw to the home position '
                     'and press a key to continue...')
                 input()
+
+        # queue for updating the status in the UI
+        self.status_queue = status_queue
 
     def error(self, text: str) -> None:
         if not isinstance(text, str):
@@ -469,11 +481,41 @@ class Axifresco:
 
     @do_action
     def draw_shapes(self, shapes: List[Shape]) -> bool:
-        for shape in tqdm(shapes):
+        start_time = time.time()
+        for i, shape in tqdm(enumerate(shapes)):
+            if self.status_queue is not None:
+                self.status_queue.put({
+                    'status': Status.PLAYING,
+                    'message': f'Drawing {len(shapes)}...',
+                    'progress': int(i / (len(shapes) - 1) * 100)
+                })
             if not self.draw_shape(shape):
                 return False
 
-        return self.move_home()
+        ellapsed_time = int(time.time() - start_time)
+
+        if not self.move_home():
+            return False
+        
+        if self.status_queue is not None:
+            if ellapsed_time >= 60:
+                minutes = ellapsed_time // 60
+                seconds = ellapsed_time % 60
+                if minutes >= 60:
+                    hours = minutes // 60
+                    minutes = minutes % 60
+                    formated_time = f'{hours}h {minutes}min {seconds}s'
+                else:
+                    formated_time = f'{minutes}min {seconds}s'
+            else:
+                formated_time = f'{ellapsed_time}s'
+            self.status_queue.put({
+                'status': Status.STOPPED,
+                'message': 'Drawing Completed in ' + formated_time,
+                'progress': 100
+            })
+
+        return True
 
     @do_action
     def stop_motors(self) -> bool:

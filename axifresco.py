@@ -1,7 +1,6 @@
 import argparse
 import atexit
 import os
-from queue import LifoQueue
 from sys import api_version
 import threading
 import time
@@ -9,7 +8,7 @@ import json
 from functools import partial
 from typing import Dict, List, NoReturn, Tuple, Callable, Any, Iterable, Mapping
 from dataclasses import dataclass
-from multiprocessing import Queue
+from multiprocessing.connection import Connection
 from threading import Event
 
 
@@ -238,7 +237,7 @@ class Axifresco:
     def __init__(self, config: Dict = None, reset=False, resolution: int = 10,
                  unsafe: bool = False, pause_event: Event = None,
                  abort_event: Event = None,
-                 status_queue: LifoQueue = None) -> None:
+                 status_pipe: Connection = None) -> None:
         # set the spline resolution
         self.resolution = resolution
 
@@ -281,7 +280,7 @@ class Axifresco:
                 input()
 
         # queue for updating the status in the UI
-        self.status_queue = status_queue
+        self.status_pipe = status_pipe
 
     def error(self, text: str) -> None:
         if not isinstance(text, str):
@@ -484,10 +483,10 @@ class Axifresco:
     def draw_shapes(self, shapes: List[Shape]) -> bool:
         start_time = time.time()
         for i, shape in tqdm(enumerate(shapes)):
-            if self.status_queue is not None:
-                self.status_queue.put({
-                    'status': Status.PLAYING,
-                    'message': f'Drawing {len(shapes)}...',
+            if self.status_pipe is not None:
+                self.status_pipe.send({
+                    'state': Status.PLAYING,
+                    'message': f'Drawing {len(shapes)} shapes...',
                     'progress': int(i / (len(shapes) - 1) * 100)
                 })
             if not self.draw_shape(shape):
@@ -498,7 +497,7 @@ class Axifresco:
         if not self.move_home():
             return False
         
-        if self.status_queue is not None:
+        if self.status_pipe is not None:
             if ellapsed_time >= 60:
                 minutes = ellapsed_time // 60
                 seconds = ellapsed_time % 60
@@ -510,8 +509,8 @@ class Axifresco:
                     formated_time = f'{minutes}min {seconds}s'
             else:
                 formated_time = f'{ellapsed_time}s'
-            self.status_queue.put({
-                'status': Status.STOPPED,
+            self.status_pipe.send({
+                'state': Status.STOPPED,
                 'message': 'Drawing Completed in ' + formated_time,
                 'progress': 100
             })
@@ -594,10 +593,10 @@ def json_to_shapes(json_file) -> Tuple[List[Shape], float]:
     for shape in shapes:
         new_shape = Shape(
             vertices=[Point(vertex['x'], vertex['y']) for vertex in shape['vertices']],
-            is_polygonal=shape['isPolygonal'], layer=shape['layer']
+            is_polygonal=shape['isPolygonal'], layer=shape.get('layer', 0)
         )
         buffer.append(new_shape)
-    
+
     aspect_ratio = shapes[0]['canvas_width'] / shapes[0]['canvas_height']
 
     return buffer, aspect_ratio

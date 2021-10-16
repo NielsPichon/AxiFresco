@@ -120,6 +120,7 @@ class Shape:
     vertices: List[Point]
     is_polygonal: bool
     ignore_ends: bool = False
+    layer: int = 0
 
     def catmull_rom(self, p0: Point, p1: Point, p2: Point, p3: Point) -> List[float]:
         """
@@ -593,7 +594,7 @@ def json_to_shapes(json_file) -> Tuple[List[Shape], float]:
     for shape in shapes:
         new_shape = Shape(
             vertices=[Point(vertex['x'], vertex['y']) for vertex in shape['vertices']],
-            is_polygonal=shape['isPolygonal']
+            is_polygonal=shape['isPolygonal'], layer=shape['layer']
         )
         buffer.append(new_shape)
     

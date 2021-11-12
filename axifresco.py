@@ -258,14 +258,12 @@ class Axifresco:
         if config is None:
             config = {}
 
-        # Force units to be mm
-        config['units'] = 2
-
         self.set_config(config)
 
         # init axidraw state
         self.is_connected = False
         self.position = Point(0, 0)
+        self.status = Status.STOPPED
 
         # set default fromat to A3
         self.format = FORMATS.A3
@@ -278,6 +276,7 @@ class Axifresco:
                 print(Fore.GREEN + 'Please move the axidraw to the home position '
                     'and press a key to continue...')
                 input()
+
 
         # queue for updating the status in the UI
         self.status_pipe = status_pipe
@@ -294,6 +293,8 @@ class Axifresco:
         """
         Allows setting the axidraw options
         """
+        # Force units to be mm
+        config['units'] = 2
 
         try:
             for key, value in config.items():
@@ -331,9 +332,11 @@ class Axifresco:
                             if key == keyboard.Key.space:
                                 if pause_event.is_set():
                                     print('Resuming draw.')
+                                    self.status = Status.PLAYING
                                     pause_event.clear()
                                 else:
                                     pause_event.set()
+                                    self.status = Status.PAUSED
                                     print('Pause... Press [space] to resume or [escape] to abort.')
                             if key == keyboard.Key.esc and pause_event.is_set():
                                 abort_event.set()
@@ -347,7 +350,6 @@ class Axifresco:
                 ret = func(self, *args, **kwargs)
 
                 if allow_pause and not self.unsafe:
-                    # is_done.set()
                     key_thread.stop()
                     key_thread.join()
 
@@ -431,12 +433,12 @@ class Axifresco:
 
     def wait_for_resume(self) -> None:
         while self.pause.is_set():
+            self.status = Status.STOPPED
             if self.abort.is_set():
                 print('Aborting...')
                 try:
                     self.pause.clear()
                     self.move_home()
-                    self.close()
                 except:
                     print('Something went wrong when aborting')
                 exit()
@@ -484,8 +486,9 @@ class Axifresco:
         start_time = time.time()
         for i, shape in tqdm(enumerate(shapes)):
             if self.status_pipe is not None:
+                self.status = Status.PLAYING
                 self.status_pipe.send({
-                    'state': Status.PLAYING,
+                    'state': self.status,
                     'message': f'Drawing {len(shapes)} shapes...',
                     'progress': int(i / (len(shapes) - 1) * 100)
                 })
@@ -509,8 +512,10 @@ class Axifresco:
                     formated_time = f'{minutes}min {seconds}s'
             else:
                 formated_time = f'{ellapsed_time}s'
+            
+            self.status = Status.STOPPED
             self.status_pipe.send({
-                'state': Status.STOPPED,
+                'state': self.status,
                 'message': 'Drawing Completed in ' + formated_time,
                 'progress': 100
             })
@@ -522,12 +527,14 @@ class Axifresco:
         self.axidraw.plot_setup()
         self.axidraw.options.mode = "align"
         self.axidraw.plot_run()
+        self.status = Status.STOPPED
 
     def close(self) -> None:
         self.stop_motors()
 
         if self.is_connected:
-            self.axidraw.disconnect()   
+            self.axidraw.disconnect()
+            self.is_connected = False
 
     def fit_to_paper(self, shapes: List[Shape], aspect_ratio: float, margin: float):
         #scale_xx is the scale in x if a point with 1 in absciss is mapped to the

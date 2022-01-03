@@ -410,7 +410,8 @@ class Axifresco:
     def move_to(self, point: Point) -> bool:
         if self.position != point:
             try:
-                self.wait_for_resume()
+                if not self.wait_for_resume():
+                    return False
                 self.axidraw.moveto(point.y, point.x)
                 self.position = point
             except Exception as e:
@@ -421,7 +422,8 @@ class Axifresco:
     @do_action
     def line_to(self, point: Point) -> bool:
         try:
-            self.wait_for_resume()
+            if not self.wait_for_resume():
+                return False
             self.axidraw.lineto(point.y, point.x)
             self.position = point
             if self.pause.is_set():
@@ -431,7 +433,7 @@ class Axifresco:
             return False
         return True
 
-    def wait_for_resume(self) -> None:
+    def wait_for_resume(self) -> bool:
         while self.pause.is_set():
             self.status = Status.STOPPED
             if self.abort.is_set():
@@ -439,10 +441,11 @@ class Axifresco:
                 try:
                     self.pause.clear()
                     self.move_home()
+                    return False
                 except:
                     print('Something went wrong when aborting')
-                exit()
             time.sleep(0.1)
+        return True
 
     @do_action
     def draw_shape(self, shape: Shape) -> bool:

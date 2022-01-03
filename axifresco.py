@@ -1,25 +1,24 @@
-import argparse
-import atexit
 import os
-from sys import api_version
-import threading
 import time
 import json
-from functools import partial
-from typing import Dict, List, NoReturn, Tuple, Callable, Any, Iterable, Mapping
-from dataclasses import dataclass
-from multiprocessing.connection import Connection
+import atexit
+import logging
+import argparse
 from threading import Event
-
+from functools import partial
+from math import pi, sqrt, atan2
+from dataclasses import dataclass
+from typing import Dict, List, Tuple, Any, Union
+from multiprocessing.connection import Connection
 
 from tqdm import tqdm
-from pyaxidraw import axidraw
 import colorama
 from colorama import Fore
 from pynput import keyboard
 from natsort import natsorted
-from PIL import Image, ImageDraw
+from pyaxidraw import axidraw
 import matplotlib.pyplot as plt 
+from PIL import Image, ImageDraw
 
 
 colorama.init(autoreset=True)
@@ -51,8 +50,8 @@ class Status:
 
 @dataclass
 class Point:
-    """
-    A utility class storing a point with basic 2D vector arithmetic. Units are in mm.
+    """A utility class storing a point with basic
+    2D vector arithmetic. Units are in mm.
     """
 
     x: float = 0
@@ -61,34 +60,34 @@ class Point:
     def __neg__(self):
         return Point(-self.x, -self.y)
 
-    def __add__(self, b):
+    def __add__(self, b: Union['Point', float]):
         if isinstance(b, Point):
             return Point(self.x + b.x, self.y + b.y)
         else:
             return Point(self.x + b, self.y + b)
     
-    def __radd__(self, b):
+    def __radd__(self, b:  Union['Point', float]):
         return self + b
 
-    def __sub__(self, b):
+    def __sub__(self, b:  Union['Point', float]):
         if isinstance(b, Point):
             return Point(self.x - b.x, self.y - b.y)
         else:
             return Point(self.x - b, self.y - b)
     
-    def __rsub__(self, b):
+    def __rsub__(self, b:  Union['Point', float]):
         return -self + b
 
-    def __mul__(self, b):
+    def __mul__(self, b: Union['Point', float]):
         if isinstance(b, Point):
             return Point(self.x * b.x, self.y * b.y)
         else:
             return Point(self.x * b, self.y * b)
     
-    def __rmul__(self, b):
+    def __rmul__(self, b:  Union['Point', float]):
         return self * b
     
-    def __truediv__(self, b):
+    def __truediv__(self, b:  Union['Point', float]):
         if isinstance(b, Point):
             return Point(self.x / b.x, self.y / b.y)
         else:
@@ -97,16 +96,27 @@ class Point:
     def __iter__(self):
         return [self.x, self.y]
 
-    def __eq__(self, o) -> bool:
+    def __eq__(self, o: Any) -> bool:
         if isinstance(o, Point):
             return self.x == o.x and self.y == o.y
         else:
             raise Exception(f"Cannot compare {type(o)} and {Point}")
 
-    def distSq(self, point) -> float:
-        direction = point - self
+    def distSq(self, b: 'Point') -> float:
+        if isinstance(b, Point):
+            raise Exception('distSq can only be called to compute distance '
+                            f'between Points, not Point and {type(b)}')
+        direction = b - self
         return direction.x ** 2 + direction.y ** 2
 
+    def norm(self) -> float:
+        return sqrt(self.x * self.x + self.y * self.y)
+    
+    def dot(self, b: 'Point') -> float:
+        if isinstance(b, Point):
+            raise Exception('dot can only be called to compute the dot product '
+                            f'of 2 Points, not of a Point and a {type(b)}')
+        return self.x * b.x + self.y * b.y
 
 class FORMATS:
     A3 = Point(297, 420)
@@ -122,8 +132,7 @@ class Shape:
     layer: int = 0
 
     def catmull_rom(self, p0: Point, p1: Point, p2: Point, p3: Point) -> List[float]:
-        """
-        Computes the 3rd order polynomial coefficients describing a
+        """Computes the 3rd order polynomial coefficients describing a
         Catmull Rom spline with alpha=0.5 passing through
         the 4 specified points"""
         a = 0.5 * (-p0 + 3 * p1 - 3 * p2 + p3)
@@ -133,8 +142,7 @@ class Shape:
         return a, b, c, d
 
     def get_segment(self, idx: int, resolution: int = 10) -> List[Point]:
-        """
-        Returns a list of points describing the edge
+        """Returns a list of points describing the edge
         starting at the specified point.
         * If the shape is polygonal, this will return a list
         containing the point and the next one.
@@ -189,8 +197,7 @@ class Shape:
     def preview(self, img: Image = None, scale: float = 1,
                 center: bool = True, flipX: bool = False,
                 flipY: bool = False) -> Image:
-        """
-        Draw the shape using PIL. If an img is provided as
+        """Draw the shape using PIL. If an img is provided as
         argument, use this one. Else create a new one.
         """
         if img is None:
@@ -227,11 +234,36 @@ class Shape:
             draw.line(xy, fill=(255, 255, 255), width=1)
 
         return img
+    
+    def has_low_angle(self, idx: int, threshold: float = 6 / 360 * pi) -> bool:
+        """Checks whether 2 consecutive segments are roughly aligned.
+        This may then be used to optimize tracing speed for instance.
+        In the case of a curve shape, this is considered to always be true.
+        """
+        if not self.is_polygonal:
+            return True
+        else:
+            # get segment from the end of the edge starting at the specified index
+            extra_points = self.get_segment(idx + 1)
+            # if there is no such edge, return False
+            if (len(extra_points) > 0):
+                b, c = extra_points
+                a, _ = self.get_segment(idx)
+
+                # compute angle of each segment w.r.t. the x-axis
+                first = b - a
+                first_angle = atan2(first.y, first.x)
+                second = c - b
+                second_angle = atan2(second.y, second.x)
+                # compare the absolute difference between the 2
+                # angles to the threshold
+                return abs(second_angle - first_angle) < threshold
+            else:
+                return False
 
 
 class Axifresco:
-    """
-    The main class to handle communication with the axidraw 
+    """The main class to handle communication with the axidraw 
     """
 
     def __init__(self, config: Dict = None, reset=False, resolution: int = 10,
@@ -277,21 +309,14 @@ class Axifresco:
                     'and press a key to continue...')
                 input()
 
-
         # queue for updating the status in the UI
         self.status_pipe = status_pipe
-
-    def error(self, text: str) -> None:
-        if not isinstance(text, str):
-            text = str(text)
-        print(Fore.RED + text)
 
     def set_format(self, format: Point) -> None:
         self.format = format
 
     def set_config(self, config: Dict) -> bool:
-        """
-        Allows setting the axidraw options
+        """Allows setting the axidraw options
         """
         # Force units to be mm
         config['units'] = 2
@@ -302,14 +327,13 @@ class Axifresco:
                     exec(f'self.axidraw.options.{key} = {value}')
             self.axidraw.update()
         except Exception as e:
-            self.error(e)
+            logging.error(e)
             return False
 
         return True
     
     def do_action(func):
-        """
-        Wrapper for any action to perform on the axidraw. Before performaing the action,
+        """Wrapper for any action to perform on the axidraw.Before performing the action,
         user approval will be requested if relevant and connection/disconnection to
         the axidraw will be performed accordingly.
         """
@@ -331,13 +355,14 @@ class Axifresco:
                         if not abort_event.is_set():
                             if key == keyboard.Key.space:
                                 if pause_event.is_set():
-                                    print('Resuming draw.')
+                                    logging.info('Resuming draw.')
                                     self.status = Status.PLAYING
                                     pause_event.clear()
                                 else:
                                     pause_event.set()
                                     self.status = Status.PAUSED
-                                    print('Pause... Press [space] to resume or [escape] to abort.')
+                                    logging.info('Drawing is paused.')
+                                    print('Press [space] to resume or [escape] to abort.')
                             if key == keyboard.Key.esc and pause_event.is_set():
                                 abort_event.set()
 
@@ -375,7 +400,7 @@ class Axifresco:
                     self.position = Point(*position)
                 return ret
             except Exception as e:
-                self.error(e)
+                logging.error(e)
                 return False
         else:
             return True
@@ -385,7 +410,7 @@ class Axifresco:
         try:
             return self.move_to(Point(0, 0))
         except Exception as e:
-            self.error(e)
+            logging.error(e)
             return False
 
     @do_action
@@ -393,7 +418,7 @@ class Axifresco:
         try:
             self.axidraw.penup()
         except Exception as e:
-            self.error(e)
+            logging.error(e)
             return False
         return True
     
@@ -402,7 +427,7 @@ class Axifresco:
         try:
             self.axidraw.pendown()
         except Exception as e:
-            self.error(e)
+            logging.error(e)
             return False
         return True
 
@@ -415,7 +440,7 @@ class Axifresco:
                 self.axidraw.moveto(point.y, point.x)
                 self.position = point
             except Exception as e:
-                self.error(e)
+                logging.error(e)
                 return False
         return True
 
@@ -429,7 +454,7 @@ class Axifresco:
             if self.pause.is_set():
                 self.pen_up()
         except Exception as e:
-            self.error(e)
+            logging.error(e)
             return False
         return True
 
@@ -437,26 +462,22 @@ class Axifresco:
         while self.pause.is_set():
             self.status = Status.STOPPED
             if self.abort.is_set():
-                print('Aborting...')
+                logging.info('Aborting...')
                 try:
                     self.pause.clear()
                     self.move_home()
                     return False
                 except:
-                    print('Something went wrong when aborting')
+                    logging.error('Something went wrong when aborting')
             time.sleep(0.1)
         return True
 
     @do_action
     def draw_shape(self, shape: Shape) -> bool:
         # quickly go through all points and make sure are within bounds of the canvas
-        if not shape.is_polygonal:
-            self.set_config({'const_speed': True})
-        else:
-            self.set_config({'const_speed': False})
         for point in shape.vertices:
             if point.x < 0 or point.y < 0 or point.x > self.format.x or point.y > self.format.y:
-                self.error("The drawing extends outside the paper. Will not draw")
+                logging.error("The drawing extends outside the paper. Will not draw")
                 return False
         if len(shape.vertices) > 0:
             if shape.ignore_ends:
@@ -476,6 +497,10 @@ class Axifresco:
                 if shape.ignore_ends:
                     num_lines -= 1
                 for idx in range(num_lines):
+                    # use acceleration if a strong angle is to come.
+                    # Otherwise maximise speed by not using any acceleration
+                    self.set_config({'const_speed': shape.has_low_angle(idx)})
+
                     # get all points on the edge from current point to the next one
                     points = shape.get_segment(idx, self.resolution)
                     # draw line from point to point, starting from the next one on the edge
@@ -559,14 +584,14 @@ class Axifresco:
         return shapes  
 
 def distSq_to_shape(shape: Shape, point: Point) -> float:
-    """
-    Returns the square of the distance to a shape's ends from a given point
+    """Returns the square of the distance to a shape's
+    ends from a given point
     """
     return min(point.distSq(shape.vertices[0]), point.distSq(shape.vertices[1]))
 
 def optimize_simple(shapes: List[Shape]) -> List[Shape]:
-    """
-    Simple "sort" of list of shape. Essentially, the next item in the returned list
+    """Simple "sort" of list of shape. Essentially,
+    the next item in the returned list
     is the closest one to previous one, e.g.
     [shape(0), closest_in_remaining(n-1), closest_in_remaining(n-2), closest_in_remaining(n-3) ...].
     This can be refered to as a greedy Nearest Neighbour algorithm
@@ -612,8 +637,7 @@ def json_to_shapes(json_file) -> Tuple[List[Shape], float]:
     return buffer, aspect_ratio
 
 def get_model(model_name: str) -> int:
-    """
-    Convert argparse arguments into an actual usable model option
+    """Convert argparse arguments into an actual usable model option
     """
     models = {
         'V3': 1,
@@ -624,8 +648,7 @@ def get_model(model_name: str) -> int:
     return models[model_name]
 
 def get_canvas_size(size):
-    """
-    Convert argparse arguments into an actual usable format
+    """Convert argparse arguments into an actual usable format
     """
     if len(size) > 1:
         if len(size) != 2:
@@ -644,8 +667,7 @@ def get_canvas_size(size):
         return sizes[size[0]]
 
 def args_to_config(args) -> Dict:
-    """
-    Converts arguments from an Argparser into a usable config
+    """Converts arguments from an Argparser into a usable config
     """
     config = {}
 
@@ -654,17 +676,17 @@ def args_to_config(args) -> Dict:
             opt = getattr(args, option, None)
             if opt is not None:
                 config[option] = opt
-    print('Axidraw config:', config)
+    logging.info('Axidraw config:', config)
     return config
 
 def draw(shapes: List[Shape], aspect_ratio: float, ax: Axifresco, margin: float,
          optimize: bool = True, preview: bool = False) -> None:
-    print('Expanding shape to fit the paper')
+    logging.info('Expanding shape to fit the paper')
     shapes = ax.fit_to_paper(shapes, aspect_ratio, margin)
 
     # optimize path
     if optimize:
-        print('Optimizing drawing path')
+        logging.info('Optimizing drawing path')
         shapes = optimize_simple(shapes)
 
     if preview:
@@ -679,25 +701,24 @@ def draw(shapes: List[Shape], aspect_ratio: float, ax: Axifresco, margin: float,
         img.close()
 
     # draw
-    print('Drawing...')
+    logging.info('Drawing...')
     ax.draw_shapes(shapes, ask_verification=True, allow_pause=True, go_home=True)
 
 def draw_from_json(args: argparse.Namespace, filename: str, ax: Axifresco) -> None:
     # load file
-    print(f'Loading file {filename}')
+    logging.info(f'Loading file {filename}')
     with open(filename, 'r') as f:
         shapes = json.load(f)
 
     # convert to shape and fit to paper
-    print('Processing json file')
+    logging.info('Processing json file')
     shapes, aspect_ratio = json_to_shapes(shapes)
 
     draw(shapes, aspect_ratio, ax, args.margin, args.optimize, args.preview)
 
 
 def test_center(ax: Axifresco) -> None:
-    """
-    Move the pen to the center of the canvas and then back to home
+    """Move the pen to the center of the canvas and then back to home
     """
     center = ax.format / 2
 
@@ -706,7 +727,7 @@ def test_center(ax: Axifresco) -> None:
         time.sleep(0.5)
         ax.move_home()
     except Exception as e:
-        print(e)
+        logging.error(e)
 
 
 if __name__ == "__main__":
@@ -757,7 +778,7 @@ if __name__ == "__main__":
 
 
     # init axidraw
-    print('Initialisizing Axidraw...')
+    logging.info('Initialisizing Axidraw...')
     try:
         ax = Axifresco(config=config, reset=args.reset, resolution=args.resolution)
 
@@ -784,13 +805,13 @@ if __name__ == "__main__":
         try:
             ax.close()
         except:
-            print('Failed to close connection properly.')
+            logging.error('Failed to close connection properly.')
 
-        print('All done')
+        logging.error('All done')
     except Exception as e:
-        print('An exception occured:', e)
-        print('Closing connection first before exiting...')
+        logging.error('An exception occured:', e)
+        logging.info('Closing connection first before exiting...')
         try:
             ax.close()
         except:
-            print('Failed to close connection properly.')
+            logging.error('Failed to close connection properly.')

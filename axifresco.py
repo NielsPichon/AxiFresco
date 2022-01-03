@@ -235,7 +235,7 @@ class Shape:
 
         return img
     
-    def has_low_angle(self, idx: int, threshold: float = 6 / 360 * pi) -> bool:
+    def has_low_angle(self, idx: int, threshold: float = pi / 8) -> bool:
         """Checks whether 2 consecutive segments are roughly aligned.
         This may then be used to optimize tracing speed for instance.
         In the case of a curve shape, this is considered to always be true.

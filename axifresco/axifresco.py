@@ -1,4 +1,3 @@
-import os
 import time
 import json
 import atexit
@@ -11,13 +10,13 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple, Any, Union
 from multiprocessing.connection import Connection
 
-from tqdm import tqdm
 import colorama
+from tqdm import tqdm
 from colorama import Fore
 from pynput import keyboard
 from natsort import natsorted
 from pyaxidraw import axidraw
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw
 
 
@@ -38,7 +37,7 @@ OPTIONS=[
     'model',
     'port',
     'port_config',
-    'units' 
+    'units'
 ]
 
 ignored = ['units']
@@ -65,7 +64,7 @@ class Point:
             return Point(self.x + b.x, self.y + b.y)
         else:
             return Point(self.x + b, self.y + b)
-    
+
     def __radd__(self, b:  Union['Point', float]):
         return self + b
 
@@ -74,7 +73,7 @@ class Point:
             return Point(self.x - b.x, self.y - b.y)
         else:
             return Point(self.x - b, self.y - b)
-    
+
     def __rsub__(self, b:  Union['Point', float]):
         return -self + b
 
@@ -83,15 +82,15 @@ class Point:
             return Point(self.x * b.x, self.y * b.y)
         else:
             return Point(self.x * b, self.y * b)
-    
+
     def __rmul__(self, b:  Union['Point', float]):
         return self * b
-    
+
     def __truediv__(self, b:  Union['Point', float]):
         if isinstance(b, Point):
             return Point(self.x / b.x, self.y / b.y)
         else:
-            return Point(self.x / b, self.y / b) 
+            return Point(self.x / b, self.y / b)
 
     def __iter__(self):
         return [self.x, self.y]
@@ -111,7 +110,7 @@ class Point:
 
     def norm(self) -> float:
         return sqrt(self.x * self.x + self.y * self.y)
-    
+
     def dot(self, b: 'Point') -> float:
         if isinstance(b, Point):
             raise Exception('dot can only be called to compute the dot product '
@@ -147,7 +146,7 @@ class Shape:
         * If the shape is polygonal, this will return a list
         containing the point and the next one.
         * If the shape is made of spline, this will return an
-        array of points along the Catmull-Rom spline. 
+        array of points along the Catmull-Rom spline.
         """
         # if starting at last point, of the spline or further,
         # don't return anything
@@ -171,7 +170,7 @@ class Shape:
                     p0 = self.vertices[0]
             else:
                 p0 = self.vertices[idx - 1]
-            
+
             p1 = self.vertices[idx]
             p2 = self.vertices[idx + 1]
 
@@ -203,7 +202,7 @@ class Shape:
         if img is None:
             img = Image.new('RGB', (1000, 1000), (0, 0, 0))
         draw = ImageDraw.Draw(img)
-        
+
         if len(self.vertices) > 0:
             x = []
             y = []
@@ -215,7 +214,7 @@ class Shape:
                 for vtx in points:
                     x.append(vtx.x * scale)
                     y.append(vtx.y * scale)
-            
+
             width, height = img.size
             if flipX:
                 x = [width - xx for xx in x]
@@ -234,7 +233,7 @@ class Shape:
             draw.line(xy, fill=(255, 255, 255), width=1)
 
         return img
-    
+
     def has_low_angle(self, idx: int, threshold: float = pi / 8) -> bool:
         """Checks whether 2 consecutive segments are roughly aligned.
         This may then be used to optimize tracing speed for instance.
@@ -263,7 +262,7 @@ class Shape:
 
 
 class Axifresco:
-    """The main class to handle communication with the axidraw 
+    """The main class to handle communication with the axidraw
     """
 
     def __init__(self, config: Dict = None, reset=False, resolution: int = 10,
@@ -331,7 +330,7 @@ class Axifresco:
             return False
 
         return True
-    
+
     def do_action(func):
         """Wrapper for any action to perform on the axidraw.Before performing the action,
         user approval will be requested if relevant and connection/disconnection to
@@ -421,7 +420,7 @@ class Axifresco:
             logging.error(e)
             return False
         return True
-    
+
     @do_action
     def pen_down(self) -> bool:
         try:
@@ -527,7 +526,7 @@ class Axifresco:
 
         if not self.move_home():
             return False
-        
+
         if self.status_pipe is not None:
             if ellapsed_time >= 60:
                 minutes = ellapsed_time // 60
@@ -540,7 +539,7 @@ class Axifresco:
                     formated_time = f'{minutes}min {seconds}s'
             else:
                 formated_time = f'{ellapsed_time}s'
-            
+
             self.status = Status.STOPPED
             self.status_pipe.send({
                 'state': self.status,
@@ -566,7 +565,7 @@ class Axifresco:
 
     def fit_to_paper(self, shapes: List[Shape], aspect_ratio: float, margin: float):
         #scale_xx is the scale in x if a point with 1 in absciss is mapped to the
-        # edge of the paper minus the margin   
+        # edge of the paper minus the margin
         scale_xx = self.format.x - 2 * margin
         #scale_xy is the scale in x if a point with 1 in ordinate is mapped to the
         # edge of the paper minus the margin
@@ -581,7 +580,7 @@ class Axifresco:
                 point.x = self.format.x / 2 + (point.x - 0.5) * scale_X
                 point.y = self.format.y / 2 + (point.y - 0.5) * scale_Y
 
-        return shapes  
+        return shapes
 
 def distSq_to_shape(shape: Shape, point: Point) -> float:
     """Returns the square of the distance to a shape's
@@ -603,11 +602,11 @@ def optimize_simple(shapes: List[Shape]) -> List[Shape]:
         # find closest shape to last shape in buffer
         closest_shape = min(
             shapes, key=partial(distSq_to_shape, point=buffer[-1].vertices[-1]))
-        
+
         # remove the shape from the list
         shapes.pop(shapes.index(closest_shape))
 
-        # if closest point is the end of the shape, revert the shape 
+        # if closest point is the end of the shape, revert the shape
         if buffer[-1].vertices[-1].distSq(closest_shape.vertices[0]) > \
             buffer[-1].vertices[-1].distSq(closest_shape.vertices[-1]):
             closest_shape.vertices = [s for s in reversed(closest_shape.vertices)]
@@ -728,90 +727,3 @@ def test_center(ax: Axifresco) -> None:
         ax.move_home()
     except Exception as e:
         logging.error(e)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        'Loads a json file describing some Fresco shapes and prints them on an Axidraw')
-    file_parser = parser.add_argument_group('file options')
-    file_parser.add_argument('--filename', type=str, required=True, help='Path to file to draw or directory. '
-                             'If a directory is specified, all the files in the directory will be drawn as '
-                             'separate layers, in alphabetical order')
-    file_parser.add_argument('--paper-size', type=str, default='a3', nargs='+',
-                             help='Paper size. Specify either a3, a4, a5, A3, A4, A5, '
-                             'or a custom size in mm, e.g. 209 458 for a paper of 209mm '
-                             'wide by 458mm long')
-    file_parser.add_argument('--optimize', action='store_true',
-                             help='Enables path optimization to try and minimize the '
-                             'amount of time the pen will be moved in the air')
-    file_parser.add_argument('--margin', type=int, default=0, help='Enforces a margin (in mm) '
-                             'on the paper. Because the drawing will always be scaled to occupy '
-                             'all available space, this means the drawing will indeed be smaller.')
-    file_parser.add_argument('--resolution', type=int, default=10,
-                             help='When drawing spline based shapes, defines the number of '
-                             'subdivisions to apply to the shape')
-    file_parser.add_argument('--preview', action='store_true', help='Preview the drawing')
-    axidraw_parser = parser.add_argument_group('axidraw options')
-    axidraw_parser.add_argument('--speed-pendown', type=int,
-                                help='Maximum XY speed when the pen is down (plotting). (1-100)')
-    axidraw_parser.add_argument('--speed-penup', type=int, help='Maximum XY speed when the pen is up. (1-100)')
-    axidraw_parser.add_argument('--accel', type=int, help='Relative acceleration/deceleration speed. '
-                                'This will be ignored for non polygonal shapes(1-100)')
-    axidraw_parser.add_argument('--pen-pos-down', type=int,
-                                help='Pen height when the pen is down (plotting). (0-100)')
-    axidraw_parser.add_argument('--pen-pos-up', help='Pen height when the pen is up. (0-100)')
-    axidraw_parser.add_argument('--pen-rate-lower', help='Speed of lowering the pen-lift motor. (1-100)')
-    axidraw_parser.add_argument('--pen-rate-raise', help='Speed of raising the pen-lift motor. (1-100)')
-    axidraw_parser.add_argument('--pen-delay-down', help='Added delay after lowering pen. (ms)')
-    axidraw_parser.add_argument('--pen-delay-up', help='Added delay after raising pen. (ms)')
-    axidraw_parser.add_argument('--model', type=get_model, default=2, choices=['V3', 'SE/A3', 'XLX', 'MiniKit'],
-                                help='Select model of AxiDraw hardware.')
-    axidraw_parser.add_argument('--port', help='Specify a USB port or AxiDraw to use.')
-    axidraw_parser.add_argument('--port-config', type=int,
-                                help='Override how the USB ports are located. (0-2)')
-    axidraw_parser.add_argument('--test-center', action='store_true', help='Test which will move the pen to '
-                                'the center of the canvas and then back home')
-    axidraw_parser.add_argument('--reset', action='store_true', help='Simply lifts the penup and switches off the motors')
-
-    args = parser.parse_args()
-    config = args_to_config(args)
-
-
-    # init axidraw
-    logging.info('Initialisizing Axidraw...')
-    try:
-        ax = Axifresco(config=config, reset=args.reset, resolution=args.resolution)
-
-        args.paper_size = get_canvas_size(args.paper_size)
-        ax.set_format(args.paper_size)
-
-        
-        if args.reset:
-            ax.stop_motors()
-            ax.axidraw.disconnect()
-        elif args.test_center:
-            test_center(ax)
-        else:
-            if os.path.isdir(args.filename):
-                files = os.listdir(args.filename)
-                files = natsorted(files)
-                files = [args.filename + '/' + file for file in files]
-            else:
-                files = [args.filename]
-
-            for file in files:
-                draw_from_json(args, file, ax)
-
-        try:
-            ax.close()
-        except:
-            logging.error('Failed to close connection properly.')
-
-        logging.error('All done')
-    except Exception as e:
-        logging.error('An exception occured:', e)
-        logging.info('Closing connection first before exiting...')
-        try:
-            ax.close()
-        except:
-            logging.error('Failed to close connection properly.')

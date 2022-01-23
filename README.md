@@ -1,5 +1,5 @@
 # AxiFresco
-A Python API to allow controlling drawing Fresco.shapes directly from the p5.js sketch
+A python toolkit for drawing Fresco-format files with an EvilMadScientist Axidraw
 
 ## Install
 First install the axidraw cli
@@ -7,17 +7,12 @@ First install the axidraw cli
 
 Install requirements with `pip install -r requirements.txt`
 
-## Run the server
-`python server.py` 
-
-
 ## Run from file
-`python axifresco.py --filename <file_to_draw.json> [--options]`
+`axifresco --filename <file_to_draw.json> [--options]`
 
 To see options:
-`python axifresco -h` 
-
+`axifresco -h`
 
 ## Acknowledgement
 JSON Hershey fonts are from https://github.com/techninja/hersheytextjs
-which is a port to JSON of EvilMadScientist's fonts of the same name. 
+which is a port to JSON of EvilMadScientist's fonts of the same name.

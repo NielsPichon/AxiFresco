@@ -4,6 +4,7 @@ import argparse
 
 from natsort import natsorted
 
+
 from axifresco.axifresco import (
     args_to_config,
     get_canvas_size,
@@ -14,7 +15,7 @@ from axifresco.axifresco import (
 )
 
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(
         'Loads a json file describing some Fresco shapes and prints them on an Axidraw')
     file_parser = parser.add_argument_group('file options')
@@ -60,7 +61,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     config = args_to_config(args)
 
-
     # init axidraw
     logging.info('Initialisizing Axidraw...')
     try:
@@ -99,3 +99,7 @@ if __name__ == '__main__':
             ax.close()
         except:
             logging.error('Failed to close connection properly.')
+
+
+if __name__ == '__main__':
+    main()

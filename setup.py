@@ -24,4 +24,5 @@ setup(
     install_requires=requirements,
     python_requires=">=3.8",
     packages=['axifresco'],
+    entry_points={"console_scripts": ["axifresco = axifresco.__main__:main"]},
 )

@@ -56,6 +56,10 @@ class Point:
     x: float = 0
     y: float = 0
 
+    @classmethod
+    def from_complex(cls, coords: complex):
+        return cls(coords.real, coords.imag)
+
     def __neg__(self):
         return Point(-self.x, -self.y)
 

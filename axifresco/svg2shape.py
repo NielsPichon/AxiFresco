@@ -1,9 +1,12 @@
 import sys
 import json
 from typing import List
+from dataclasses import asdict
+from xml.dom import minidom
 
-from tqdm import tqdm
 import matplotlib.pyplot as plt
+
+from svgpathtools import svg2paths, Line, CubicBezier, Arc, QuadraticBezier 
 
 from axifresco import Shape, Point
 
@@ -76,6 +79,72 @@ def svg2shape(svg: str) -> List[Shape]:
 
     return shapes
 
+def paths2shapes(path):
+    shapes = []
+    vertex_buffer = []
+    for move in path:
+        if isinstance(move, Line):
+            # if there already is a vertex in the buffer,
+            # check that the shape is continuous.
+            if len(vertex_buffer) > 0:
+                # if there is a discontinuity, store the vertex buffer
+                # as a shape and start with a fresh buffer
+                if move.start != vertex_buffer[-1]:
+                    shapes.append(Shape([Point.from_complex(p) for p in vertex_buffer], is_polygonal=True))
+                    vertex_buffer = [move.start]
+            vertex_buffer.append(move.end)
+        elif isinstance(move, CubicBezier):
+            # if the buffer is not empty, register it as a shape
+            if len(vertex_buffer) > 0:
+                shapes.append(Shape([Point.from_complex(p) for p in vertex_buffer], is_polygonal=True))
+                vertex_buffer = []
+            # convert the bezier to a catmull-Rom shape
+            shapes.append(
+                bezier_to_catmull([
+                    Point.from_complex(move.start),
+                    Point.from_complex(move.control1),
+                    Point.from_complex(move.control2),
+                    Point.from_complex(move.end)
+                ])
+            )
+        elif isinstance(move, QuadraticBezier):
+            raise NotImplementedError('Quadratic Bezier are not yet supported')
+        elif isinstance(move, Arc):
+            raise NotImplementedError('Arcs are not yet supported')
+    
+    if len(vertex_buffer) > 0:
+        shapes.append(Shape([Point.from_complex(p) for p in vertex_buffer], is_polygonal=True))
+
+    return shapes
+
+def convert_svg_file(filepath: str):
+    # find drawing width and height
+    svg_xml = minidom.parse(filepath)
+    root = svg_xml.documentElement
+    width = int(root.getAttribute('width'))
+    height = int(root.getAttribute('height'))
+    canvasSize = Point(width, height)
+
+    # convert svg to paths
+    paths, _ = svg2paths(filepath)
+
+    # convert paths to shapes
+    shapes = []
+    for path in paths:
+        shapes.extend(paths2shapes(path))
+
+    # normalize coordinates
+    for s in shapes:
+        for i, v in enumerate(s.vertices):
+            s.vertices[i] = v / canvasSize
+
+    # convert to json
+    shapes_svg = {'shapes': [asdict(s) for s in shapes]}
+    for s in shapes_svg['shapes']:
+        s['canvas_width'] = width
+        s['canvas_height'] = height
+
+    return json.dumps(shapes_svg)    
 
 def convert_font_to_catmull(json_file, font_name):
     with open(json_file, 'r') as f:
@@ -122,4 +191,5 @@ def convert_font_to_catmull(json_file, font_name):
 
 
 if __name__ == '__main__':
-    convert_font_to_catmull('./fonts/hersheytext.json', 'futural')
+    # convert_font_to_catmull('./fonts/hersheytext.json', 'futural')
+    print(convert_svg_file('C://Users/niels/Desktop/recto.svg'))

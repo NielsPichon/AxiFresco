@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 from svgpathtools import svg2paths, Line, CubicBezier, Arc, QuadraticBezier 
 
-from axifresco import Shape, Point
+from axifresco.axifresco import Shape, Point
 
 
 def bezier_to_catmull(vertices: List[Point]) -> Shape:

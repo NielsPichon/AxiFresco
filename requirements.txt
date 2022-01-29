@@ -4,3 +4,4 @@ pynput
 natsort
 Pillow
 matplotlib
+svgpathtools

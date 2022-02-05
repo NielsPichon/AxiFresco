@@ -192,4 +192,6 @@ def convert_font_to_catmull(json_file, font_name):
 
 if __name__ == '__main__':
     # convert_font_to_catmull('./fonts/hersheytext.json', 'futural')
-    print(convert_svg_file('C://Users/niels/Desktop/recto.svg'))
+    data = convert_svg_file('C://Users/niels/Desktop/recto.svg')
+    with open('recto.json', 'w') as f:
+        f.write(data)

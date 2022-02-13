@@ -238,13 +238,15 @@ class Shape:
 
         return img
 
-    def has_low_angle(self, idx: int, threshold: float = pi / 8) -> bool:
+    def has_low_angle(self, idx: int, threshold: float = pi / 8, smooth_trajectory: bool = True) -> bool:
         """Checks whether 2 consecutive segments are roughly aligned.
         This may then be used to optimize tracing speed for instance.
         In the case of a curve shape, this is considered to always be true.
         """
         if not self.is_polygonal:
             return True
+        elif not smooth_trajectory:
+            return False
         else:
             # get segment from the end of the edge starting at the specified index
             extra_points = self.get_segment(idx + 1)
@@ -476,7 +478,7 @@ class Axifresco:
         return True
 
     @do_action
-    def draw_shape(self, shape: Shape) -> bool:
+    def draw_shape(self, shape: Shape, smooth_trajectory: bool = False) -> bool:
         # quickly go through all points and make sure are within bounds of the canvas
         for point in shape.vertices:
             if point.x < 0 or point.y < 0 or point.x > self.format.x or point.y > self.format.y:
@@ -502,7 +504,7 @@ class Axifresco:
                 for idx in range(num_lines):
                     # use acceleration if a strong angle is to come.
                     # Otherwise maximise speed by not using any acceleration
-                    self.set_config({'const_speed': shape.has_low_angle(idx)})
+                    self.set_config({'const_speed': shape.has_low_angle(idx, smooth_trajectory=smooth_trajectory)})
 
                     # get all points on the edge from current point to the next one
                     points = shape.get_segment(idx, self.resolution)
@@ -513,7 +515,7 @@ class Axifresco:
         return True
 
     @do_action
-    def draw_shapes(self, shapes: List[Shape]) -> bool:
+    def draw_shapes(self, shapes: List[Shape], smooth_trajectory: bool = False) -> bool:
         start_time = time.time()
         for i, shape in tqdm(enumerate(shapes)):
             if self.status_pipe is not None:
@@ -523,7 +525,7 @@ class Axifresco:
                     'message': f'Drawing {len(shapes)} shapes...',
                     'progress': int(i / len(shapes) * 100)
                 })
-            if not self.draw_shape(shape):
+            if not self.draw_shape(shape, smooth_trajectory=smooth_trajectory):
                 return False
 
         ellapsed_time = int(time.time() - start_time)
@@ -686,7 +688,7 @@ def args_to_config(args) -> Dict:
     return config
 
 def draw(shapes: List[Shape], aspect_ratio: float, ax: Axifresco, margin: float,
-         optimize: bool = True, preview: bool = False) -> None:
+         optimize: bool = True, smooth_trajectory: bool = False, preview: bool = False) -> None:
     logging.info('Expanding shape to fit the paper')
     shapes = ax.fit_to_paper(shapes, aspect_ratio, margin)
 
@@ -708,7 +710,7 @@ def draw(shapes: List[Shape], aspect_ratio: float, ax: Axifresco, margin: float,
 
     # draw
     logging.info('Drawing...')
-    ax.draw_shapes(shapes, ask_verification=True, allow_pause=True, go_home=True)
+    ax.draw_shapes(shapes, ask_verification=True, allow_pause=True, go_home=True, smooth_trajectory=smooth_trajectory)
 
 def draw_from_json(args: argparse.Namespace, filename: str, ax: Axifresco) -> None:
     # load file

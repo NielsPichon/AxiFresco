@@ -627,6 +627,9 @@ def json_to_shapes(json_file) -> Tuple[List[Shape], float]:
     # get either the shape list or the single shape as a list of shape
     shapes = json_file.get('shapes', [json_file])
 
+    if not isinstance(shapes, list):
+        shapes = [shapes]
+
     buffer = []
     for shape in shapes:
         new_shape = Shape(

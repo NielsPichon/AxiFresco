@@ -521,7 +521,7 @@ class Axifresco:
                 self.status_pipe.send({
                     'state': self.status,
                     'message': f'Drawing {len(shapes)} shapes...',
-                    'progress': int(i / (len(shapes) - 1) * 100)
+                    'progress': int(i / len(shapes) * 100)
                 })
             if not self.draw_shape(shape):
                 return False

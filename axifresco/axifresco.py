@@ -3,6 +3,7 @@ import json
 import atexit
 import logging
 import argparse
+from itertools import chain
 from threading import Event
 from functools import partial
 from math import pi, sqrt, atan2
@@ -14,7 +15,6 @@ import colorama
 from tqdm import tqdm
 from colorama import Fore
 from pynput import keyboard
-from natsort import natsorted
 from pyaxidraw import axidraw
 import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw
@@ -515,7 +515,95 @@ class Axifresco:
         return True
 
     @do_action
-    def draw_shapes(self, shapes: List[Shape], smooth_trajectory: bool = False) -> bool:
+    def draw_shape_v2(self, shape: Shape) -> bool:
+        if len(shape.vertices) < 4:
+            self.draw_shape(shape)
+
+        # quickly go through all points and make sure are within bounds of the canvas
+        for point in shape.vertices:
+            if point.x < 0 or point.y < 0 or point.x > self.format.x or point.y > self.format.y:
+                logging.error("The drawing extends outside the paper. Will not draw")
+                return False
+
+        if len(shape.vertices) > 0:
+            start = 1 if shape.ignore_ends else 0
+
+            # move to start of shape
+            if not self.move_to(shape.vertices[start]):
+                return False
+
+            if len(shape.vertices) == 1:
+                self.pen_down()
+                self.pen_up()
+            else:
+                end = len(shape.vertices)
+                if shape.ignore_ends:
+                    end -= 1
+                # convert shape to only lines
+                vtx = list(chain([shape.get_segment(idx, self.resolution) for idx in range(start, end)]))
+
+                # plan the speed for each vertex
+                edges = [vtx[i + 1] - vtx[i] for i in range(len(vtx) - 1)]
+                dists = [e.norm() for e in edges]
+                edges_dir = [e / d for e, d in zip(edges, dists)]
+
+                speeds = [0]
+
+                # TODO retrieve max speedpendown and accel rate
+                max_v = self.axidraw.options.speed_pendown
+                accel_rate = self.axidraw.options.accel
+                cornering = 10
+
+                max_accel_t = max_v / accel_rate
+                min_accel_dist = 0.5 * accel_rate * max_accel_t * max_accel_t
+
+                delta = cornering / 5000  # Corner rounding/tolerance factor.
+
+                # compute the velocity if the only limit is cornering and accel from previous vertex
+                for i in range(1, len(vtx) - 1):
+                    # distance from prev vertex to this one
+                    d = dists[i - 1]
+                    # speed at prev vertex
+                    v_prev = speeds[i - 1]
+
+                    # compute max vel at vertex
+                    if d > min_accel_dist:
+                        v_current = max_v
+                    else:
+                        v_current = min(max_v, sqrt(v_prev * v_prev + accel_rate * d))
+
+                    # we modify the velocity based on the corner angle
+                    cos_factor = - edges_dir[i - 1].dot(edges_dir)
+                    root_factor = sqrt((1 - cos_factor) / 2)
+                    denominator = 1 - root_factor
+                    if denominator > 0.0001:
+                        rfactor = (delta * root_factor) / denominator
+                    else:
+                        rfactor = 100000
+                    v_current = min(v_current, sqrt(accel_rate * rfactor))
+                    speeds.append(v_current)
+                speeds.append(0)
+
+                # backpropagate speeds to make sure we never exceed the max deceleration
+                for i in reversed(range(1, len(vtx) - 1)):
+                    # distance from prev vertex to this one
+                    d = dists[i]
+                    # speed at next vertex
+                    v_next = speeds[i + 1]
+
+                    if speeds[i] > v_next and d < min_accel_dist:
+                        speeds[i] = min(speeds[i], sqrt(v_next * v_next - d * accel_rate))
+
+                # draw
+                for i in range(1, len(vtx)):
+                    try:
+                        self.axidraw.plot_seg_with_v(vtx[i].x, vtx[i].y, speeds[i - 1], speeds[i])
+                    except:
+                        return False
+        return True
+
+    @do_action
+    def draw_shapes(self, shapes: List[Shape], smooth_trajectory: bool = False, use_v2: bool = True) -> bool:
         start_time = time.time()
         for i, shape in tqdm(enumerate(shapes)):
             if self.status_pipe is not None:
@@ -525,8 +613,12 @@ class Axifresco:
                     'message': f'Drawing {len(shapes)} shapes...',
                     'progress': int(i / len(shapes) * 100)
                 })
-            if not self.draw_shape(shape, smooth_trajectory=smooth_trajectory):
-                return False
+            if use_v2:
+                if not self.draw_shape_v2(shape):
+                    return False
+            else:
+                if not self.draw_shape(shape, smooth_trajectory=smooth_trajectory):
+                    return False
 
         ellapsed_time = int(time.time() - start_time)
 
@@ -688,7 +780,9 @@ def args_to_config(args) -> Dict:
     return config
 
 def draw(shapes: List[Shape], aspect_ratio: float, ax: Axifresco, margin: float,
-         optimize: bool = True, smooth_trajectory: bool = False, preview: bool = False) -> None:
+         optimize: bool = True, smooth_trajectory: bool = False,
+         preview: bool = False, use_v2: bool = False
+) -> None:
     logging.info('Expanding shape to fit the paper')
     shapes = ax.fit_to_paper(shapes, aspect_ratio, margin)
 
@@ -710,7 +804,14 @@ def draw(shapes: List[Shape], aspect_ratio: float, ax: Axifresco, margin: float,
 
     # draw
     logging.info('Drawing...')
-    ax.draw_shapes(shapes, ask_verification=True, allow_pause=True, go_home=True, smooth_trajectory=smooth_trajectory)
+    ax.draw_shapes(
+        shapes,
+        ask_verification=True,
+        allow_pause=True,
+        go_home=True,
+        smooth_trajectory=smooth_trajectory,
+        use_v2=use_v2
+    )
 
 def draw_from_json(args: argparse.Namespace, filename: str, ax: Axifresco) -> None:
     # load file

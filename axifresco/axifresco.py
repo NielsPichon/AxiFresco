@@ -550,9 +550,9 @@ class Axifresco:
                 speeds = [0]
 
                 # TODO retrieve max speedpendown and accel rate
-                max_v = self.axidraw.options.speed_pendown
-                accel_rate = self.axidraw.options.accel
-                cornering = 10
+                max_v = self.axidraw.options.speed_pendown * self.axidraw.params.speed_lim_xy_hr / 110.0
+                accel_rate = self.axidraw.params.accel_rate_pu * self.axidraw.options.accel / 100.0
+                cornering = self.axidraw.params.cornering
 
                 max_accel_t = max_v / accel_rate
                 min_accel_dist = 0.5 * accel_rate * max_accel_t * max_accel_t

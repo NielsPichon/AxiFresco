@@ -8,6 +8,7 @@ from threading import Event
 from functools import partial
 from math import pi, sqrt, atan2
 from dataclasses import dataclass
+from turtle import speed
 from typing import Dict, List, Tuple, Any, Union
 from multiprocessing.connection import Connection
 
@@ -41,6 +42,8 @@ OPTIONS=[
 ]
 
 ignored = ['units']
+
+MM_TO_INCH = 0.03937008
 
 class Status:
     PLAYING = 'playing'
@@ -116,7 +119,7 @@ class Point:
         return sqrt(self.x * self.x + self.y * self.y)
 
     def dot(self, b: 'Point') -> float:
-        if isinstance(b, Point):
+        if not isinstance(b, Point):
             raise Exception('dot can only be called to compute the dot product '
                             f'of 2 Points, not of a Point and a {type(b)}')
         return self.x * b.x + self.y * b.y
@@ -426,6 +429,22 @@ class Axifresco:
             logging.error(e)
             return False
         return True
+    
+    @do_action
+    def move_with_v(self, point: Point, v_start: float, v_end: float) -> bool:
+        """WARNING!
+        This function expects distances to be in inch and speeds in inch per s
+        """
+        if self.position!= point:
+            try:
+                if not self.wait_for_resume():
+                    return False
+                self.axidraw.plot_seg_with_v(point.y, point.x, v_start, v_end)
+                self.position = point
+            except Exception as e:
+                logging.error(e)
+                return False
+        return True
 
     @do_action
     def pen_down(self) -> bool:
@@ -540,7 +559,12 @@ class Axifresco:
                 if shape.ignore_ends:
                     end -= 1
                 # convert shape to only lines
-                vtx = list(chain([shape.get_segment(idx, self.resolution) for idx in range(start, end)]))
+                if not shape.is_polygonal:
+                    vtx = list(chain.from_iterable([shape.get_segment(idx, self.resolution)[1:] for idx in range(start, end - 1)]))
+                    vtx.insert(0, shape.vertices[start])
+                else:
+                    vtx = shape.vertices[start: end]
+                vtx = [v * MM_TO_INCH for v in vtx] # convert to inches
 
                 # plan the speed for each vertex
                 edges = [vtx[i + 1] - vtx[i] for i in range(len(vtx) - 1)]
@@ -549,9 +573,9 @@ class Axifresco:
 
                 speeds = [0]
 
-                # TODO retrieve max speedpendown and accel rate
+                # retrieve max speedpendown and accel rate
                 max_v = self.axidraw.options.speed_pendown * self.axidraw.params.speed_lim_xy_hr / 110.0
-                accel_rate = self.axidraw.params.accel_rate_pu * self.axidraw.options.accel / 100.0
+                accel_rate = self.axidraw.params.accel_rate * self.axidraw.options.accel / 100.0
                 cornering = self.axidraw.params.cornering
 
                 max_accel_t = max_v / accel_rate
@@ -573,7 +597,7 @@ class Axifresco:
                         v_current = min(max_v, sqrt(v_prev * v_prev + accel_rate * d))
 
                     # we modify the velocity based on the corner angle
-                    cos_factor = - edges_dir[i - 1].dot(edges_dir)
+                    cos_factor = - edges_dir[i - 1].dot(edges_dir[i])
                     root_factor = sqrt((1 - cos_factor) / 2)
                     denominator = 1 - root_factor
                     if denominator > 0.0001:
@@ -591,15 +615,15 @@ class Axifresco:
                     # speed at next vertex
                     v_next = speeds[i + 1]
 
-                    if speeds[i] > v_next and d < min_accel_dist:
-                        speeds[i] = min(speeds[i], sqrt(v_next * v_next - d * accel_rate))
+                    # if we need to decelerate and the distance is to short to reach target speed, reduce this vertex's speed
+                    if speeds[i] > v_next and d * accel_rate < v_next * v_next:
+                        speeds[i] = sqrt(v_next * v_next - d * accel_rate)
 
                 # draw
+                self.pen_down()
                 for i in range(1, len(vtx)):
-                    try:
-                        self.axidraw.plot_seg_with_v(vtx[i].x, vtx[i].y, speeds[i - 1], speeds[i])
-                    except:
-                        return False
+                    self.move_with_v(vtx[i], speeds[i - 1], speeds[i])
+                self.pen_up()
         return True
 
     @do_action

@@ -1,3 +1,4 @@
+from audioop import reverse
 import time
 import json
 import atexit
@@ -535,6 +536,7 @@ class Axifresco:
 
     @do_action
     def draw_shape_v2(self, shape: Shape) -> bool:
+        # use the regular draw call for shorter shapes
         if len(shape.vertices) < 4:
             self.draw_shape(shape)
 
@@ -565,6 +567,11 @@ class Axifresco:
                 else:
                     vtx = shape.vertices[start: end]
                 vtx = [v * MM_TO_INCH for v in vtx] # convert to inches
+
+                # merge points that overlap
+                for i in reversed(range(1, len(vtx))):
+                    if vtx[i] == vtx[i - 1]:
+                        vtx.pop(i)
 
                 # plan the speed for each vertex
                 edges = [vtx[i + 1] - vtx[i] for i in range(len(vtx) - 1)]

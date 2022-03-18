@@ -440,8 +440,13 @@ class Axifresco:
             try:
                 if not self.wait_for_resume():
                     return False
+                # lower the pen if required
+                if self.axidraw.current_pen():
+                    self.pen_down()
                 self.axidraw.plot_seg_with_v(point.y, point.x, v_start, v_end)
                 self.position = point
+                if self.pause.is_set():
+                    self.pen_up()
             except Exception as e:
                 logging.error(e)
                 return False
@@ -504,6 +509,7 @@ class Axifresco:
             if point.x < 0 or point.y < 0 or point.x > self.format.x or point.y > self.format.y:
                 logging.error("The drawing extends outside the paper. Will not draw")
                 return False
+
         if len(shape.vertices) > 0:
             if shape.ignore_ends:
                 start = shape.vertices[1]
@@ -627,10 +633,9 @@ class Axifresco:
                         speeds[i] = sqrt(v_next * v_next - d * accel_rate)
 
                 # draw
-                self.pen_down()
                 for i in range(1, len(vtx)):
-                    self.move_with_v(vtx[i], speeds[i - 1], speeds[i])
-                self.pen_up()
+                    if not self.move_with_v(vtx[i], speeds[i - 1], speeds[i]):
+                        return False
         return True
 
     @do_action

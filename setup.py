@@ -11,7 +11,7 @@ def read_text_file(filename: str):
 long_description = read_text_file("README.md")
 requirements = read_text_file("requirements.txt").split("\n")
 
-pipmain(['install', 'https://cdn.evilmadscientist.com/dl/ad/public/AxiDraw_API.zip'])
+pipmain(['install', 'https://github.com/evil-mad/axidraw/releases/download/v3.7.0/AxiDraw_API_320.zip'])
 
 setup(
     name='axifresco',
